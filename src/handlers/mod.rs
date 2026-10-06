@@ -44,9 +44,8 @@ pub async fn html_handler(Path((page, html_name)): Path<(String, String)>) -> Re
 
 // GET /css/{page}/{*css_name}
 pub async fn css_handler(Path((page, css_name)): Path<(String, String)>) -> Response {
-    let path = PathBuf::from("css").join(&page).join(&css_name);
     serve_file(
-        Some(path),
+        build_path("css", &page, &css_name, "css"),
         "text/css; charset=utf-8",
     )
     .await
@@ -54,9 +53,8 @@ pub async fn css_handler(Path((page, css_name)): Path<(String, String)>) -> Resp
 
 // GET /js/{page}/{*js_name}
 pub async fn js_handler(Path((page, js_name)): Path<(String, String)>) -> Response {
-    let path = PathBuf::from("js").join(&page).join(&js_name);
     serve_file(
-        Some(path),
+        build_path("js", &page, &js_name, "js"),
         "text/javascript; charset=utf-8",
     )
     .await

@@ -14,6 +14,6 @@ async fn main() {
         .route("/img/{page}/{*img_name}", get(img_handler))
         .route("/temp_converter", get(temp_converter));
 
-    let listener = tokio::net::TcpListener::bind("localhost:3000").await.unwrap();
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }
