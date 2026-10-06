@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Event Schedule</title>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+<script src="/js/main/main.js" defer></script>
+  <link rel="stylesheet" href="/css/main/main.css">
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo">Events</span></div>
+  <div class="sep"></div>
+  <div class="game-tag">GAME:&nbsp;<input id="gameInput" placeholder="название игры..."></div>
+  <div class="spacer"></div>
+  <div class="nav-wrap">
+    <button class="nav-btn" onclick="shiftView(-1)">▲ НАЗАД</button>
+    <div class="nav-label" id="navLabel"></div>
+    <button class="nav-btn" onclick="shiftView(1)">ВПЕРЁД ▼</button>
+  </div>
+  <button class="btn-today" onclick="goToday()">TODAY</button>
+  <div class="sep"></div>
+  <button class="btn-add" onclick="openModal()">+ ИВЕНТ</button>
+  <button class="btn-save" onclick="saveData()">Save</button>
+</div>
+<div class="topbar">
+  <button class="btn-save" onclick="exportData()">Export</button>
+  <button class="btn-save" onclick="importData()">Import</button>
+
+</div>
+<div class="legend" id="legend"></div>
+
+<div class="col-header" id="colHeader">
+  <div class="ch-axis">ДАТА</div>
+  <div class="ch-cats" id="chCats"></div>
+</div>
+
+<div class="body-scroll" id="bodyScroll">
+  <div class="time-axis" id="timeAxis"></div>
+  <div class="grid-area">
+    <div class="grid-inner" id="gridInner"></div>
+  </div>
+</div>
+
+<div class="statusbar">
+  <div class="st">EVENTS: <span id="stTotal">0</span></div>
+  <div class="st">АКТИВНЫХ: <span id="stActive">0</span></div>
+  <div class="st">СКОРО 7Д: <span id="stSoon">0</span></div>
+  <div class="st" style="margin-left:auto">Designed by HavaniaPrincess</div>
+</div>
+
+<!-- POPUP -->
+<div class="popup" id="popup">
+  <div class="pc-cat" id="pcCat"></div>
+  <div class="pc-title" id="pcTitle"></div>
+  <div class="pc-dates" id="pcDates"></div>
+  <div class="pc-dur" id="pcDur"></div>
+  <div class="pc-note hidden" id="pcNote"></div>
+  <div class="pc-actions">
+    <button class="pc-btn" onclick="editFromPopup()">EDIT</button>
+    <button class="pc-btn" id="pc-link">LINK</button>
+    <button class="pc-btn del" onclick="deleteFromPopup()">DELETE</button>
+  </div>
+</div>
+
+<!-- MODAL -->
+<div class="overlay hidden" id="overlay">
+  <div class="modal">
+    <button class="modal-x" onclick="closeModal()">✕</button>
+    <div class="modal-title" id="modalTitle">НОВЫЙ ИВЕНТ</div>
+    <div class="ff"><label class="fl">Название</label><input class="fi" id="fTitle" placeholder="Сезон: Нулевой день"></div>
+    <div class="ff"><label class="fl">Категория</label><div class="cat-picker" id="catPicker"></div></div>
+    <div class="ff"><label class="fl">Отметить для выполнения</label><div class="cat-picker" id="needToDo"></div></div>
+    <div class="frow">
+      <div class="ff"><label class="fl">Начало</label><input class="fi" type="date" id="fStart"></div>
+      <div class="ff"><label class="fl">Конец</label><input class="fi" type="date" id="fEnd"></div>
+    </div>
+    <div class="ff"><label class="fl">Заметка</label><textarea class="ft" id="fNote" placeholder="Контент, награды, ссылки..."></textarea></div>
+    <div class="ff"><label class="fl">Ссылка</label><textarea class="ft" id="fLink" placeholder="Ссылка"></textarea></div>
+    <div class="modal-actions">
+      <button class="mbtn danger hidden" id="btnDel" onclick="deleteEvent()">УДАЛИТЬ</button>
+      <button class="mbtn" onclick="closeModal()">ОТМЕНА</button>
+      <button class="mbtn primary" onclick="saveEvent()">СОХРАНИТЬ</button>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
