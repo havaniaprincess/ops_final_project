@@ -1,0 +1,56 @@
+services:
+  app:
+    build:
+      context: .
+      args:
+        APP_NAME: ${APP_NAME}
+    container_name: rust-app
+    restart: unless-stopped
+    working_dir: /app 
+    volumes:
+      - ./html:/app/html:ro
+      - ./css:/app/css:ro
+      - ./js:/app/js:ro
+    environment:
+      - RUST_LOG=${RUST_LOG:-info}
+      - APP_PORT=${APP_PORT:-8080}
+    # Port open only inside containers. Access for nginx only
+    expose:
+      - "${APP_PORT:-8080}"
+    networks:
+      - backend
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: nginx
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    environment:
+      - DOMAIN=${DOMAIN}
+      - APP_PORT=${APP_PORT:-8080}
+    volumes:
+      - ./nginx/templates:/etc/nginx/templates:ro
+      - ./certbot/conf:/etc/letsencrypt:ro
+      - ./certbot/www:/var/www/certbot:ro
+
+    command: /bin/sh -c "while :; do sleep 6h & wait $${!}; nginx -s reload; done & /docker-entrypoint.sh nginx -g 'daemon off;'"
+    networks:
+      - backend
+
+  certbot:
+    image: certbot/certbot:latest
+    container_name: certbot
+    restart: unless-stopped
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+
+    entrypoint: /bin/sh -c "trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done"
+
+networks:
+  backend:
+    driver: bridge
