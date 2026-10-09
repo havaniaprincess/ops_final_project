@@ -1,8 +1,8 @@
 use axum::{Router, routing::get};
 
 use crate::handlers::{
-    css_handler, health, html_handler, html_handler_main, img_handler, js_handler, temp_converter, 
-    version
+    css_handler, health, html_handler, html_handler_main, img_handler, js_handler, temp_converter,
+    version,
 };
 
 pub mod handlers;
@@ -86,8 +86,8 @@ mod tests {
             let (status, ctype, body) = get(uri).await;
             assert_eq!(status, StatusCode::OK, "{uri}");
             assert_eq!(
-                ctype.as_deref(), 
-                Some("text/javascript; charset=utf-8"), 
+                ctype.as_deref(),
+                Some("text/javascript; charset=utf-8"),
                 "{uri}"
             );
             assert_eq!(body, expected, "{uri}");
@@ -123,8 +123,8 @@ mod tests {
     async fn img_with_unsupported_extension_is_415() {
         for uri in ["/img/main/file.txt", "/img/main/noext"] {
             assert_eq!(
-                get(uri).await.0, 
-                StatusCode::UNSUPPORTED_MEDIA_TYPE, 
+                get(uri).await.0,
+                StatusCode::UNSUPPORTED_MEDIA_TYPE,
                 "{uri}"
             );
         }
@@ -171,7 +171,7 @@ mod tests {
     #[tokio::test]
     async fn temp_converter_integer_result_has_no_fraction() {
         assert_eq!(
-            get_text("/temp_converter?celsius=100").await, 
+            get_text("/temp_converter?celsius=100").await,
             (StatusCode::OK, "212".into())
         );
     }
@@ -179,12 +179,12 @@ mod tests {
     #[tokio::test]
     async fn temp_converter_defaults_to_zero() {
         assert_eq!(
-            get_text("/temp_converter").await, 
+            get_text("/temp_converter").await,
             (StatusCode::OK, "32".into())
         );
         // unrelated params are ignored
         assert_eq!(
-            get_text("/temp_converter?foo=1").await, 
+            get_text("/temp_converter?foo=1").await,
             (StatusCode::OK, "32".into())
         );
     }

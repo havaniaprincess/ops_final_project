@@ -1,12 +1,12 @@
 use std::{
-    collections::HashMap, 
+    collections::HashMap,
     path::{Component, PathBuf}
 };
 
 use axum::{
+    response::{IntoResponse, Response},
     extract::{Path, Query},
-    ttp::{StatusCode, header},
-    esponse::{IntoResponse, Response}
+    http::{StatusCode, header},
 };
 
 fn build_path(kind: &str, page: &str, name: &str, ext: &str) -> Option<PathBuf> {
@@ -113,9 +113,9 @@ fn temp_converter_celsius_to_fahrenheit(celsius: f64) -> f64 {
 // GET /temp_converter?celsius=<f64>
 // Non-finite input ("NaN", "inf") or a result overflowing to infinity -> 400.
 pub async fn temp_converter(
-    Query(params): Query<HashMap<String, f64>>
+    Query(params): Query<HashMap<String, f64>>,
 ) -> Result<String, StatusCode> {
-    let fahrenheit = 
+    let fahrenheit =
         temp_converter_celsius_to_fahrenheit(params.get("celsius").copied().unwrap_or(0.0));
     if !fahrenheit.is_finite() {
         return Err(StatusCode::BAD_REQUEST);
@@ -170,7 +170,7 @@ mod tests {
         assert_eq!(build_path("css", "main", "a/../../x", "css"), None);
         // inner "." is dropped by Path::components and stays inside the dir
         assert_eq!(
-            build_path("css", "main", "./x", "css"), 
+            build_path("css", "main", "./x", "css"),
             Some(PathBuf::from("css/main/x.css"))
         );
         assert_eq!(build_path("css", "main", "/etc/passwd", "css"), None);
@@ -198,7 +198,7 @@ mod tests {
     fn image_mime_is_case_insensitive() {
         assert_eq!(image_mime(std::path::Path::new("A.PNG")), Some("image/png"));
         assert_eq!(
-            image_mime(std::path::Path::new("b.JpEg")), 
+            image_mime(std::path::Path::new("b.JpEg")),
             Some("image/jpeg")
         );
     }
@@ -249,10 +249,10 @@ mod tests {
     #[tokio::test]
     async fn temp_converter_rejects_non_finite() {
         for c in [
-            f64::NAN, 
-            f64::INFINITY, 
-            f64::NEG_INFINITY, 
-            f64::MAX, 
+            f64::NAN,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+            f64::MAX,
             f64::MIN
         ] {
             assert_eq!(call(Some(c)).await, Err(StatusCode::BAD_REQUEST), "{c}");
