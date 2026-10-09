@@ -12,3 +12,7 @@ tokio-util = { version = "0.7", features = ["io-util"] }
 [[bin]]
 name = "ops_app"
 path = "src/main.rs"
+
+[dev-dependencies]
+http-body-util = "0.1"
+tower = { version = "0.5", features = ["util"] }

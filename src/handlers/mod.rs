@@ -103,6 +103,151 @@ pub async fn img_handler(Path((page, img_name)): Path<(String, String)>) -> Resp
     }
 }
 
-pub async fn temp_converter(Query(params): Query<HashMap<String, u64>>) -> String {
-    (params.get("celsius").cloned().unwrap_or(0) * 9 / 5 + 32).to_string()
+fn temp_converter_celsius_to_fahrenheit(celsius: f64) -> f64 {
+    celsius * 9.0 / 5.0 + 32.0
+}
+
+// GET /temp_converter?celsius=<f64>
+// Non-finite input ("NaN", "inf") or a result overflowing to infinity -> 400.
+pub async fn temp_converter(Query(params): Query<HashMap<String, f64>>) -> Result<String, StatusCode> {
+    let fahrenheit = temp_converter_celsius_to_fahrenheit(params.get("celsius").copied().unwrap_or(0.0));
+    if !fahrenheit.is_finite() {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    Ok(fahrenheit.to_string())
+}
+
+pub async fn health() -> StatusCode {
+    StatusCode::OK
+}
+
+pub async fn version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn build_path_adds_default_extension() {
+        assert_eq!(
+            build_path("css", "main", "main", "css"),
+            Some(PathBuf::from("css").join("main").join("main.css"))
+        );
+    }
+
+    #[test]
+    fn build_path_keeps_existing_extension() {
+        assert_eq!(
+            build_path("js", "main", "lib.min.js", "js"),
+            Some(PathBuf::from("js").join("main").join("lib.min.js"))
+        );
+        assert_eq!(
+            build_path("html", "main", "data.txt", "html"),
+            Some(PathBuf::from("html").join("main").join("data.txt"))
+        );
+    }
+
+    #[test]
+    fn build_path_allows_nested_names() {
+        assert_eq!(
+            build_path("css", "main", "sub/dir/style", "css"),
+            Some(PathBuf::from("css/main/sub/dir/style.css"))
+        );
+    }
+
+    #[test]
+    fn build_path_rejects_traversal_and_absolute() {
+        assert_eq!(build_path("css", "..", "x", "css"), None);
+        assert_eq!(build_path("css", "main", "../x", "css"), None);
+        assert_eq!(build_path("css", "main", "a/../../x", "css"), None);
+        // inner "." is dropped by Path::components and stays inside the dir
+        assert_eq!(build_path("css", "main", "./x", "css"), Some(PathBuf::from("css/main/x.css")));
+        assert_eq!(build_path("css", "main", "/etc/passwd", "css"), None);
+    }
+
+    #[test]
+    fn image_mime_known_types() {
+        let cases = [
+            ("a.png", "image/png"),
+            ("a.jpg", "image/jpeg"),
+            ("a.jpeg", "image/jpeg"),
+            ("a.gif", "image/gif"),
+            ("a.webp", "image/webp"),
+            ("a.svg", "image/svg+xml"),
+            ("a.ico", "image/x-icon"),
+            ("a.bmp", "image/bmp"),
+            ("a.avif", "image/avif"),
+        ];
+        for (file, mime) in cases {
+            assert_eq!(image_mime(std::path::Path::new(file)), Some(mime), "{file}");
+        }
+    }
+
+    #[test]
+    fn image_mime_is_case_insensitive() {
+        assert_eq!(image_mime(std::path::Path::new("A.PNG")), Some("image/png"));
+        assert_eq!(image_mime(std::path::Path::new("b.JpEg")), Some("image/jpeg"));
+    }
+
+    #[test]
+    fn image_mime_unknown_or_missing_extension() {
+        assert_eq!(image_mime(std::path::Path::new("a.txt")), None);
+        assert_eq!(image_mime(std::path::Path::new("noext")), None);
+        assert_eq!(image_mime(std::path::Path::new(".png")), None);
+    }
+
+    fn assert_close(actual: f64, expected: f64) {
+        assert!((actual - expected).abs() < 1e-9, "{actual} != {expected}");
+    }
+
+    #[test]
+    fn celsius_to_fahrenheit_formula() {
+        let cases = [
+            (0.0, 32.0),
+            (100.0, 212.0),
+            (37.0, 98.6),
+            (36.6, 97.88),
+            (-40.0, -40.0),
+            (-273.15, -459.67),
+            (1.0, 33.8),
+        ];
+        for (c, f) in cases {
+            assert_close(temp_converter_celsius_to_fahrenheit(c), f);
+        }
+    }
+
+    async fn call(celsius: Option<f64>) -> Result<String, StatusCode> {
+        let params = celsius
+            .map(|v| HashMap::from([("celsius".to_string(), v)]))
+            .unwrap_or_default();
+        temp_converter(Query(params)).await
+    }
+
+    #[tokio::test]
+    async fn temp_converter_handler() {
+        assert_eq!(call(None).await, Ok("32".into()));
+        assert_eq!(call(Some(0.0)).await, Ok("32".into()));
+        assert_eq!(call(Some(100.0)).await, Ok("212".into()));
+        assert_eq!(call(Some(-40.0)).await, Ok("-40".into()));
+        assert_close(call(Some(37.0)).await.unwrap().parse().unwrap(), 98.6);
+    }
+
+    #[tokio::test]
+    async fn temp_converter_rejects_non_finite() {
+        for c in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY, f64::MAX, f64::MIN] {
+            assert_eq!(call(Some(c)).await, Err(StatusCode::BAD_REQUEST), "{c}");
+        }
+    }
+
+    #[tokio::test]
+    async fn health_is_ok() {
+        assert_eq!(health().await, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn version_matches_cargo_toml() {
+        assert_eq!(version().await, env!("CARGO_PKG_VERSION"));
+    }
 }
