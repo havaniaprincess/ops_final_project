@@ -1,12 +1,12 @@
 use std::{
     collections::HashMap,
-    path::{Component, PathBuf}
+    path::{Component, PathBuf},
 };
 
 use axum::{
-    response::{IntoResponse, Response},
     extract::{Path, Query},
     http::{StatusCode, header},
+    response::{IntoResponse, Response},
 };
 
 fn build_path(kind: &str, page: &str, name: &str, ext: &str) -> Option<PathBuf> {
@@ -253,7 +253,7 @@ mod tests {
             f64::INFINITY,
             f64::NEG_INFINITY,
             f64::MAX,
-            f64::MIN
+            f64::MIN,
         ] {
             assert_eq!(call(Some(c)).await, Err(StatusCode::BAD_REQUEST), "{c}");
         }
