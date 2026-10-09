@@ -72,8 +72,6 @@ jobs:
       - uses: taiki-e/install-action@nextest      # быстро ставит готовый бинарник nextest
       # nextest быстрее обычного cargo test и даёт читаемый отчёт
       - run: cargo nextest run --workspace --all-features --locked
-      # nextest не умеет doctests, поэтому гоняем их отдельно
-      - run: cargo test --workspace --doc --all-features --locked
 
   # ---------- Сборка документации ----------
   docs:

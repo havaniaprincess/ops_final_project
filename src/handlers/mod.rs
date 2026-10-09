@@ -1,6 +1,13 @@
-use std::{collections::HashMap, path::{Component, PathBuf}};
+use std::{
+    collections::HashMap, 
+    path::{Component, PathBuf}
+};
 
-use axum::{extract::{Path, Query}, http::{StatusCode, header}, response::{IntoResponse, Response}};
+use axum::{
+    extract::{Path, Query}, h
+    ttp::{StatusCode, header}, r
+    esponse::{IntoResponse, Response}
+};
 
 fn build_path(kind: &str, page: &str, name: &str, ext: &str) -> Option<PathBuf> {
     let rel = PathBuf::from(page).join(name);
@@ -20,9 +27,7 @@ async fn serve_file(path: Option<PathBuf>, mime: &'static str) -> Response {
     };
     match tokio::fs::read(&path).await {
         Ok(bytes) => ([(header::CONTENT_TYPE, mime)], bytes).into_response(),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            StatusCode::NOT_FOUND.into_response()
-        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => StatusCode::NOT_FOUND.into_response(),
         Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     }
 }
@@ -96,9 +101,7 @@ pub async fn img_handler(Path((page, img_name)): Path<(String, String)>) -> Resp
             bytes,
         )
             .into_response(),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            StatusCode::NOT_FOUND.into_response()
-        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => StatusCode::NOT_FOUND.into_response(),
         Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     }
 }
@@ -109,8 +112,11 @@ fn temp_converter_celsius_to_fahrenheit(celsius: f64) -> f64 {
 
 // GET /temp_converter?celsius=<f64>
 // Non-finite input ("NaN", "inf") or a result overflowing to infinity -> 400.
-pub async fn temp_converter(Query(params): Query<HashMap<String, f64>>) -> Result<String, StatusCode> {
-    let fahrenheit = temp_converter_celsius_to_fahrenheit(params.get("celsius").copied().unwrap_or(0.0));
+pub async fn temp_converter(
+    Query(params): Query<HashMap<String, f64>>
+) -> Result<String, StatusCode> {
+    let fahrenheit = 
+        temp_converter_celsius_to_fahrenheit(params.get("celsius").copied().unwrap_or(0.0));
     if !fahrenheit.is_finite() {
         return Err(StatusCode::BAD_REQUEST);
     }
@@ -163,7 +169,10 @@ mod tests {
         assert_eq!(build_path("css", "main", "../x", "css"), None);
         assert_eq!(build_path("css", "main", "a/../../x", "css"), None);
         // inner "." is dropped by Path::components and stays inside the dir
-        assert_eq!(build_path("css", "main", "./x", "css"), Some(PathBuf::from("css/main/x.css")));
+        assert_eq!(
+            build_path("css", "main", "./x", "css"), 
+            Some(PathBuf::from("css/main/x.css"))
+        );
         assert_eq!(build_path("css", "main", "/etc/passwd", "css"), None);
     }
 
@@ -188,7 +197,10 @@ mod tests {
     #[test]
     fn image_mime_is_case_insensitive() {
         assert_eq!(image_mime(std::path::Path::new("A.PNG")), Some("image/png"));
-        assert_eq!(image_mime(std::path::Path::new("b.JpEg")), Some("image/jpeg"));
+        assert_eq!(
+            image_mime(std::path::Path::new("b.JpEg")), 
+            Some("image/jpeg")
+        );
     }
 
     #[test]
@@ -236,7 +248,13 @@ mod tests {
 
     #[tokio::test]
     async fn temp_converter_rejects_non_finite() {
-        for c in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY, f64::MAX, f64::MIN] {
+        for c in [
+            f64::NAN, 
+            f64::INFINITY, 
+            f64::NEG_INFINITY, 
+            f64::MAX, 
+            f64::MIN
+        ] {
             assert_eq!(call(Some(c)).await, Err(StatusCode::BAD_REQUEST), "{c}");
         }
     }
