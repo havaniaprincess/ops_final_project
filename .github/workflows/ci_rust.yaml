@@ -1,0 +1,125 @@
+# Название workflow отображается во вкладке Actions и в статусах PR
+name: CI-rust
+
+# Когда запускать CI
+on:
+  push:
+    branches: [main]        # каждый коммит в main
+  pull_request:             # каждый PR (и каждое новое обновление PR)
+
+# Минимальные права для GITHUB_TOKEN: только чтение репозитория.
+# Если джобе нужно больше (например, публикация релиза), выдавайте точечно.
+permissions:
+  contents: read
+
+# Если в ту же ветку/PR прилетел новый коммит, отменяем устаревший запуск.
+# Экономит минуты Actions и очередь раннеров.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always   # цветной вывод cargo в логах
+  RUSTFLAGS: -D warnings     # любые warnings компилятора = ошибка (только в CI!)
+  RUSTDOCFLAGS: -D warnings  # то же самое для rustdoc (битые ссылки в доках и т.п.)
+
+jobs:
+  # ---------- Проверка форматирования ----------
+  # Самая быстрая проверка: кэш и сборка не нужны
+  fmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4                 # забираем код
+      - uses: dtolnay/rust-toolchain@stable       # ставим stable Rust
+        with:
+          components: rustfmt                     # + компонент rustfmt
+      # --check не меняет файлы, а падает, если код не отформатирован
+      - run: cargo fmt --all -- --check
+  # ---------- Линтер ----------
+  clippy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2              # кэш ~/.cargo и target/
+      # --workspace: все крейты; --all-targets: включая тесты, примеры, бенчи;
+      # --all-features: со всеми фичами; --locked: строго по Cargo.lock
+      - run: cargo clippy --workspace --all-targets --all-features --locked
+
+  # ---------- Тесты ----------
+  test:
+    name: test (${{ matrix.os }}, ${{ matrix.toolchain }})   # имя джобы в UI
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false        # не прерывать остальные комбинации, если одна упала
+      matrix:
+        os: [ubuntu-latest]
+        toolchain: [stable]
+        include:
+          # Дополнительная комбинация: проверка MSRV (минимальной поддерживаемой
+          # версии Rust). Значение должно совпадать с rust-version в Cargo.toml.
+          - os: ubuntu-latest
+            toolchain: "1.99"
+    steps:
+      - uses: actions/checkout@v4
+      # @master нужен, чтобы передавать версию тулчейна параметром
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.toolchain }}
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@nextest      # быстро ставит готовый бинарник nextest
+      # nextest быстрее обычного cargo test и даёт читаемый отчёт
+      - run: cargo nextest run --workspace --all-features --locked
+      # nextest не умеет doctests, поэтому гоняем их отдельно
+      - run: cargo test --workspace --doc --all-features --locked
+
+  # ---------- Сборка документации ----------
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # --no-deps: только свои крейты; ошибки в доках ловятся через RUSTDOCFLAGS
+      - run: cargo doc --workspace --no-deps --all-features --locked
+
+  # ---------- Покрытие кода ----------
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview          # нужен для llvm-cov
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      # Формируем отчёт в формате lcov
+      - run: cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info
+      # Отправляем отчёт в Codecov (токен хранится в Secrets репозитория)
+      - uses: codecov/codecov-action@v5
+        with:
+          files: lcov.info
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  # ---------- Безопасность и лицензии зависимостей ----------
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # cargo-deny проверяет уязвимости (RustSec), лицензии, дубли и источники
+      # зависимостей. Правила лежат в deny.toml в корне репозитория.
+      - uses: EmbarkStudios/cargo-deny-action@v2
+
+  # ---------- Сводная джоба для branch protection ----------
+  # В настройках ветки main достаточно требовать только эту проверку.
+  # Тогда при изменении матрицы или списка джоб настройки менять не нужно.
+  ci-success:
+    if: always()                                  # выполнять, даже если зависимости упали
+    needs: [fmt, clippy, test, docs]              # ждём обязательные джобы
+    runs-on: ubuntu-latest
+    steps:
+      # Падаем, если хоть одна из джоб провалилась или была отменена
+      - run: |
+          if [[ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" == "true" ]]; then exit 1; fi
