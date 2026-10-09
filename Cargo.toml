@@ -1,8 +1,9 @@
 [package]
 name = "https_server"
-author = "Dmitriy Yudin a.k.a HavaniaPrincess"
+authors = ["Dmitriy Yudin a.k.a HavaniaPrincess"]
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
 
 [dependencies]
 tokio = { version = "1.53", features = ["macros", "rt-multi-thread", "fs"] }
