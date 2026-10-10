@@ -1,4 +1,6 @@
-use axum::{Router, routing::get};
+use std::path::PathBuf;
+
+use axum::{Router, middleware, routing::get};
 
 use crate::handlers::{
     css_handler, health, html_handler, html_handler_main, img_handler, js_handler, temp_converter,
@@ -6,6 +8,7 @@ use crate::handlers::{
 };
 
 pub mod handlers;
+mod logging;
 
 fn app() -> Router {
     Router::new()
@@ -17,11 +20,23 @@ fn app() -> Router {
         .route("/temp_converter", get(temp_converter))
         .route("/health", get(health))
         .route("/version", get(version))
+        .layer(middleware::from_fn(logging::log_requests))
 }
 
 #[tokio::main]
 async fn main() {
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    let log_file = std::env::var_os("LOG_FILE")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(logging::DEFAULT_LOG_FILE));
+    if let Err(e) = logging::init(&log_file) {
+        eprintln!("failed to init logging to {}: {e}", log_file.display());
+        std::process::exit(1);
+    }
+
+    let port = std::env::var("APP_PORT").unwrap_or_else(|_| "3000".into());
+    let addr = format!("0.0.0.0:{port}");
+    let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
+    log::info!("listening on {addr}, logging to {}", log_file.display());
     axum::serve(listener, app()).await.unwrap();
 }
 
@@ -212,10 +227,62 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn version_returns_package_version() {
+    async fn version_returns_build_info() {
         let (status, ctype, body) = get("/version").await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(ctype.as_deref(), Some("text/plain; charset=utf-8"));
-        assert_eq!(String::from_utf8(body).unwrap(), env!("CARGO_PKG_VERSION"));
+        let body = String::from_utf8(body).unwrap();
+        let lines: Vec<&str> = body.lines().collect();
+        assert_eq!(lines.len(), 3, "{body}");
+        assert_eq!(lines[0], format!("version: {}", env!("CARGO_PKG_VERSION")));
+        assert!(lines[1].starts_with("rustc: rustc "), "{body}");
+        assert_eq!(lines[2], "authors: Dmitriy Yudin a.k.a HavaniaPrincess");
+    }
+
+    #[tokio::test]
+    async fn requests_are_logged_with_level_by_status() {
+        let cap = crate::logging::log_capture();
+
+        get("/temp_converter?celsius=12345").await;
+        get("/css/main/log_test_missing.css").await;
+
+        let ok = cap.find("/temp_converter?celsius=12345");
+        assert_eq!(ok.len(), 1, "{ok:?}");
+        let (level, target, msg) = &ok[0];
+        assert_eq!(*level, log::Level::Info);
+        assert_eq!(target, "http");
+        assert!(
+            msg.starts_with("- \"GET /temp_converter?celsius=12345\" 200 "),
+            "{msg}"
+        );
+        assert!(msg.ends_with("ms"), "{msg}");
+
+        let missing = cap.find("/css/main/log_test_missing.css");
+        assert_eq!(missing.len(), 1, "{missing:?}");
+        assert_eq!(missing[0].0, log::Level::Warn);
+        assert!(missing[0].2.contains("\" 404 "), "{}", missing[0].2);
+    }
+
+    #[tokio::test]
+    async fn request_log_uses_x_real_ip() {
+        let cap = crate::logging::log_capture();
+        app()
+            .oneshot(
+                Request::get("/health?log_test_ip")
+                    .header("x-real-ip", "203.0.113.7")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let lines = cap.find("/health?log_test_ip");
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert!(
+            lines[0]
+                .2
+                .starts_with("203.0.113.7 \"GET /health?log_test_ip\" 200 "),
+            "{}",
+            lines[0].2
+        );
     }
 }

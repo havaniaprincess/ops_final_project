@@ -28,7 +28,10 @@ async fn serve_file(path: Option<PathBuf>, mime: &'static str) -> Response {
     match tokio::fs::read(&path).await {
         Ok(bytes) => ([(header::CONTENT_TYPE, mime)], bytes).into_response(),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => StatusCode::NOT_FOUND.into_response(),
-        Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+        Err(e) => {
+            log::error!("failed to read {}: {e}", path.display());
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
     }
 }
 
@@ -102,7 +105,10 @@ pub async fn img_handler(Path((page, img_name)): Path<(String, String)>) -> Resp
         )
             .into_response(),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => StatusCode::NOT_FOUND.into_response(),
-        Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+        Err(e) => {
+            log::error!("failed to read {}: {e}", path.display());
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
     }
 }
 
@@ -128,7 +134,12 @@ pub async fn health() -> StatusCode {
 }
 
 pub async fn version() -> String {
-    env!("CARGO_PKG_VERSION").to_string()
+    format!(
+        "version: {}\nrustc: {}\nauthors: {}\n",
+        env!("CARGO_PKG_VERSION"),
+        env!("RUSTC_VERSION"),
+        env!("CARGO_PKG_AUTHORS").replace(':', ", "),
+    )
 }
 
 #[cfg(test)]
@@ -265,7 +276,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn version_matches_cargo_toml() {
-        assert_eq!(version().await, env!("CARGO_PKG_VERSION"));
+    async fn version_contains_build_info() {
+        let v = version().await;
+        assert!(
+            v.contains(&format!("version: {}\n", env!("CARGO_PKG_VERSION"))),
+            "{v}"
+        );
+        assert!(
+            v.contains(&format!("rustc: {}\n", env!("RUSTC_VERSION"))),
+            "{v}"
+        );
+        assert_ne!(env!("RUSTC_VERSION"), "unknown");
+        assert!(
+            v.contains("authors: Dmitriy Yudin a.k.a HavaniaPrincess\n"),
+            "{v}"
+        );
     }
 }
