@@ -72,25 +72,15 @@ jobs:
             ServerAliveInterval 30
           EOF
 
-      # На сервере: подтягиваем коммит и запускаем deploy.sh.
-      # reset --hard не трогает неотслеживаемые файлы (.env, certbot/).
+      # На сервере ключ привязан к forced command (server/cd-deploy.sh):
+      # что бы мы ни передали, там выполнится только деплой этого SHA,
+      # и только если коммит есть в origin/main. Shell по этому ключу не дают.
       - name: Deploy
         env:
           SHA: ${{ steps.sha.outputs.sha }}
-          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
         run: |
           [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "bad sha: $SHA"; exit 1; }
-          # ssh склеивает аргументы в строку для удалённого shell — экранируем
-          ssh server "bash -s -- $(printf '%q ' "$SHA" "$DEPLOY_PATH")" <<'EOF'
-            set -euo pipefail
-            sha="$1"; dir="$2"
-            cd "$dir"
-            git fetch --prune origin
-            git fetch origin "$sha"
-            git reset --hard "$sha"
-            echo "deploying $(git log -1 --format='%h %s')"
-            ./deploy.sh up
-          EOF
+          ssh server "$SHA"
 
       # Проверка снаружи: через DNS, nginx и TLS, как ходят пользователи
       - name: Smoke test

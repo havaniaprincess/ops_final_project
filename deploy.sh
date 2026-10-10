@@ -45,7 +45,7 @@ COMPOSE=()
 detect_compose() {
     command -v docker >/dev/null 2>&1 || die "docker is not installed"
     docker info >/dev/null 2>&1 \
-        || die "cannot talk to the docker daemon (is it running? is ${USER:-$(id -un)} in the 'docker' group?)"
+        || die "cannot talk to the docker daemon (rootless: 'systemctl --user status docker' and 'docker context use rootless'; rootful: is ${USER:-$(id -un)} in the 'docker' group?)"
 
     if docker compose version >/dev/null 2>&1; then
         COMPOSE=(docker compose)
