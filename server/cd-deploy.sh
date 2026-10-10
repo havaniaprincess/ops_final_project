@@ -40,4 +40,5 @@ fi
 
 git reset --hard "$sha"
 echo "deploying $(git log -1 --format='%h %s')"
-exec ./deploy.sh up
+# via bash: works even if the executable bit got lost (e.g. committed from Windows)
+exec bash ./deploy.sh up
