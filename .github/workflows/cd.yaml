@@ -1,0 +1,102 @@
+# Деплой на сервер после зелёного CI в main
+name: CD
+
+on:
+  # Запускается, когда завершился workflow CI-rust (имя из ci_rust.yaml)
+  workflow_run:
+    workflows: [CI-rust]
+    types: [completed]
+    branches: [main]
+  # Ручной запуск из вкладки Actions: передеплой или откат на нужный коммит
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Ветка, тег или SHA для деплоя"
+        required: true
+        default: main
+
+permissions:
+  contents: read
+
+# Деплои идут строго по одному. Начатый деплой не отменяем —
+# прерванный посередине docker compose хуже, чем подождать.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    # workflow_run срабатывает и на CI из PR (в т.ч. из форков, где ветка тоже
+    # может называться main), а запускается с секретами. Поэтому деплоим только
+    # успешный CI, вызванный push'ем в этот же репозиторий.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    # Environment: отдельные секреты для прода, можно включить ручное
+    # подтверждение деплоя (Settings → Environments → production → Required reviewers)
+    environment:
+      name: production
+      url: ${{ vars.DOMAIN && format('https://{0}', vars.DOMAIN) || '' }}
+    timeout-minutes: 30
+    steps:
+      # Определяем точный коммит: тот, что прошёл CI, или введённый вручную
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.event.workflow_run.head_sha }}
+          fetch-depth: 1
+      - id: sha
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      # SSH без сторонних actions: ключ и known_hosts из секретов.
+      # known_hosts обязателен — иначе подключение можно подменить (MITM).
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<EOF
+          Host server
+            HostName ${{ secrets.SSH_HOST }}
+            User ${{ secrets.SSH_USER }}
+            Port ${{ secrets.SSH_PORT || 22 }}
+            IdentityFile ~/.ssh/deploy_key
+            IdentitiesOnly yes
+            StrictHostKeyChecking yes
+            ServerAliveInterval 30
+          EOF
+
+      # На сервере: подтягиваем коммит и запускаем deploy.sh.
+      # reset --hard не трогает неотслеживаемые файлы (.env, certbot/).
+      - name: Deploy
+        env:
+          SHA: ${{ steps.sha.outputs.sha }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "bad sha: $SHA"; exit 1; }
+          # ssh склеивает аргументы в строку для удалённого shell — экранируем
+          ssh server "bash -s -- $(printf '%q ' "$SHA" "$DEPLOY_PATH")" <<'EOF'
+            set -euo pipefail
+            sha="$1"; dir="$2"
+            cd "$dir"
+            git fetch --prune origin
+            git fetch origin "$sha"
+            git reset --hard "$sha"
+            echo "deploying $(git log -1 --format='%h %s')"
+            ./deploy.sh up
+          EOF
+
+      # Проверка снаружи: через DNS, nginx и TLS, как ходят пользователи
+      - name: Smoke test
+        if: vars.DOMAIN != ''
+        env:
+          DOMAIN: ${{ vars.DOMAIN }}
+        run: |
+          curl -fsS --retry 5 --retry-delay 3 --retry-all-errors "https://$DOMAIN/health"
+          curl -fsS "https://$DOMAIN/version"

@@ -11,9 +11,11 @@ services:
       - ./html:/app/html:ro
       - ./css:/app/css:ro
       - ./js:/app/js:ro
+      - app_logs:/app/logs
     environment:
       - RUST_LOG=${RUST_LOG:-info}
       - APP_PORT=${APP_PORT:-8080}
+      - LOG_FILE=/app/logs/server.log
     # Port open only inside containers. Access for nginx only
     expose:
       - "${APP_PORT:-8080}"
@@ -54,3 +56,6 @@ services:
 networks:
   backend:
     driver: bridge
+
+volumes:
+  app_logs:
