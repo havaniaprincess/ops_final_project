@@ -24,16 +24,31 @@ env:
   RUSTDOCFLAGS: -D warnings  # то же самое для rustdoc (битые ссылки в доках и т.п.)
 
 jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release --locked
+      # Складываем всё, что нужно для запуска: бинарник + статика + контрольная сумма
+      - name: Prepare dist
+        run: |
+          mkdir -p dist
+          cp target/release/ops_app dist/
+          cp -r html css js dist/
+          (cd dist && sha256sum ops_app > ops_app.sha256)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ops_app-${{ github.sha }} 
+          path: dist/
+          if-no-files-found: error
   # ---------- Проверка форматирования ----------
   # Самая быстрая проверка: кэш и сборка не нужны
   fmt:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4                 # забираем код
-      - uses: actions/upload-artifact@v4
-        with:
-          name: build-output
-          path: dist/
       - uses: dtolnay/rust-toolchain@stable       # ставим stable Rust
         with:
           components: rustfmt                     # + компонент rustfmt
@@ -44,10 +59,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/upload-artifact@v4
-        with:
-          name: build-output
-          path: dist/
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -72,10 +83,6 @@ jobs:
             toolchain: "1.99"
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/upload-artifact@v4
-        with:
-          name: build-output
-          path: dist/
       # @master нужен, чтобы передавать версию тулчейна параметром
       - uses: dtolnay/rust-toolchain@master
         with:
@@ -83,7 +90,12 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@nextest      # быстро ставит готовый бинарник nextest
       # nextest быстрее обычного cargo test и даёт читаемый отчёт
-      - run: cargo nextest run --workspace --all-features --locked
+      - run: cargo nextest run --profile ci --workspace --all-features --locked
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-report-${{ matrix.os }}-${{ matrix.toolchain }}
+          path: target/nextest/ci/junit.xml
 
   # ---------- Сборка документации ----------
   docs:
@@ -98,6 +110,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       # --no-deps: только свои крейты; ошибки в доках ловятся через RUSTDOCFLAGS
       - run: cargo doc --workspace --no-deps --all-features --locked
+      - uses: actions/upload-artifact@v4
+        with:
+          name: docs
+          path: target/doc/
 
   # ---------- Покрытие кода ----------
   coverage:
@@ -114,22 +130,25 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@cargo-llvm-cov
       # Формируем отчёт в формате lcov
-      - run: cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info
-      # Отправляем отчёт в Codecov (токен хранится в Secrets репозитория)
+      - run: cargo llvm-cov --workspace --all-features --no-report
+      - run: cargo llvm-cov report --lcov --output-path lcov.info
+      - run: cargo llvm-cov report --html --output-dir coverage
       - uses: codecov/codecov-action@v5
         with:
           files: lcov.info
           token: ${{ secrets.CODECOV_TOKEN }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: |
+            lcov.info
+            coverage/html/
 
   # ---------- Безопасность и лицензии зависимостей ----------
   audit:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/upload-artifact@v4
-        with:
-          name: build-output
-          path: dist/
       # cargo-deny проверяет уязвимости (RustSec), лицензии, дубли и источники
       # зависимостей. Правила лежат в deny.toml в корне репозитория.
       - uses: EmbarkStudios/cargo-deny-action@v2
@@ -139,7 +158,7 @@ jobs:
   # Тогда при изменении матрицы или списка джоб настройки менять не нужно.
   ci-success:
     if: always()                                  # выполнять, даже если зависимости упали
-    needs: [fmt, clippy, test, docs]              # ждём обязательные джобы
+    needs: [fmt, clippy, test, docs, build]       # ждём обязательные джобы
     runs-on: ubuntu-latest
     steps:
       # Падаем, если хоть одна из джоб провалилась или была отменена
