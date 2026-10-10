@@ -30,6 +30,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4                 # забираем код
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build-output
+          path: dist/
       - uses: dtolnay/rust-toolchain@stable       # ставим stable Rust
         with:
           components: rustfmt                     # + компонент rustfmt
@@ -40,6 +44,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build-output
+          path: dist/
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -64,6 +72,10 @@ jobs:
             toolchain: "1.99"
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build-output
+          path: dist/
       # @master нужен, чтобы передавать версию тулчейна параметром
       - uses: dtolnay/rust-toolchain@master
         with:
@@ -78,6 +90,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build-output
+          path: dist/
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       # --no-deps: только свои крейты; ошибки в доках ловятся через RUSTDOCFLAGS
@@ -88,6 +104,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build-output
+          path: dist/
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: llvm-tools-preview          # нужен для llvm-cov
@@ -106,6 +126,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build-output
+          path: dist/
       # cargo-deny проверяет уязвимости (RustSec), лицензии, дубли и источники
       # зависимостей. Правила лежат в deny.toml в корне репозитория.
       - uses: EmbarkStudios/cargo-deny-action@v2
