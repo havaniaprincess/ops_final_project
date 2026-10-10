@@ -169,15 +169,20 @@ ensure_cert() {
 # the same path real traffic takes.
 wait_for_app() {
     info "Waiting for the app to respond on app:$APP_PORT/health"
+    local out
     for _ in $(seq 1 30); do
-        if compose exec -T nginx wget -q -O /dev/null "http://app:$APP_PORT/health" 2>/dev/null; then
+        if out="$(compose exec -T nginx wget -q -O /dev/null "http://app:$APP_PORT/health" 2>&1)"; then
             ok "app is healthy"
             return
         fi
         sleep 1
     done
-    compose logs --tail 50 app >&2 || true
-    die "app did not become healthy in 30s (logs above)"
+    # The check runs inside nginx, so a crash-looping nginx fails it too.
+    compose ps >&2 || true
+    compose logs --tail 30 nginx >&2 || true
+    compose logs --tail 30 app >&2 || true
+    warn "last health check output: ${out:-<empty>}"
+    die "app did not become healthy in 30s (containers, nginx/app logs and check output above)"
 }
 
 # ---------- commands ----------
