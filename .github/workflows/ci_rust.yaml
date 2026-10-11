@@ -41,8 +41,8 @@ jobs:
         shell: bash
         run: |
           mkdir -p dist
-          cp target/release/ops_app* dist/
-          rm dist/ops_app.*d*
+          cp target/release/ops_app dist/
+          cp target/release/ops_app.exe dist/
           cp -r html css js dist/
           (cd dist && sha256sum ops_app* > ops_app.sha256)
       - uses: actions/upload-artifact@v4
@@ -81,7 +81,7 @@ jobs:
     strategy:
       fail-fast: false        # не прерывать остальные комбинации, если одна упала
       matrix:
-        os: [ubuntu-latest]
+        os: [ubuntu-latest, windows-latest]
         toolchain: [stable]
         include:
           # Дополнительная комбинация: проверка MSRV (минимальной поддерживаемой
