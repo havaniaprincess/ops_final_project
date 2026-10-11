@@ -10,10 +10,11 @@ use std::{
 use axum::{extract::Request, middleware::Next, response::Response};
 use log::Level;
 
-// Max records waiting to be written. When the disk can't keep up,
-// logging callers block instead of growing memory without bound.
+/// Max records waiting to be written. When the disk can't keep up,
+/// logging callers block instead of growing memory without bound.
 const QUEUE_CAPACITY: usize = 10_000;
 
+/// Default log file path.
 pub const DEFAULT_LOG_FILE: &str = "logs/server.log";
 
 /// `io::Write` that hands every formatted record to the writer thread.
@@ -22,6 +23,7 @@ pub struct ChannelWriter {
 }
 
 impl Write for ChannelWriter {
+    /// Creates a new `ChannelWriter` with the given synchronous sender.
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.tx
             .send(buf.to_vec())
@@ -46,6 +48,8 @@ pub fn spawn_writer<W: Write + Send + 'static>(out: W) -> (ChannelWriter, JoinHa
     (ChannelWriter { tx }, handle)
 }
 
+/// Writer loop for the background log writer thread.
+/// Receives log records from the channel and writes them to the output.
 fn writer_loop<W: Write>(rx: Receiver<Vec<u8>>, out: W) {
     let mut out = BufWriter::new(out);
     // Block for the next record, then drain whatever else is queued and flush
@@ -68,6 +72,7 @@ fn writer_loop<W: Write>(rx: Receiver<Vec<u8>>, out: W) {
     }
 }
 
+/// Opens the log file at the given path, creating parent directories if necessary.
 fn open_log_file(path: &Path) -> io::Result<File> {
     if let Some(dir) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
         fs::create_dir_all(dir)?;
@@ -88,6 +93,7 @@ pub fn init(path: &Path) -> io::Result<()> {
         .map_err(io::Error::other)
 }
 
+/// Determines the log level based on the HTTP status code. 5xx are errors, 4xx are warnings, others are info.
 fn level_for(status: u16) -> Level {
     match status {
         500.. => Level::Error,
@@ -97,7 +103,9 @@ fn level_for(status: u16) -> Level {
 }
 
 /// Middleware: one line per request — client ip, method, uri, status, latency.
+/// Logs the request after it has been processed by the next middleware or handler.
 pub async fn log_requests(req: Request, next: Next) -> Response {
+    /// Record the start time of the request to measure latency.
     let start = Instant::now();
     let method = req.method().clone();
     let uri = req.uri().clone();
@@ -117,6 +125,7 @@ pub async fn log_requests(req: Request, next: Next) -> Response {
         level_for(status.as_u16()),
         "{client} \"{method} {uri}\" {} {:.3}ms",
         status.as_u16(),
+        // Calculate the elapsed time in milliseconds.
         start.elapsed().as_secs_f64() * 1000.0
     );
     resp
@@ -130,6 +139,7 @@ mod tests {
     use super::*;
     use std::sync::{Arc, Mutex, OnceLock};
 
+    /// Captures log output in a shared buffer for testing purposes.
     #[derive(Clone, Default)]
     struct SharedBuf(Arc<Mutex<Vec<u8>>>);
 
@@ -143,6 +153,7 @@ mod tests {
         }
     }
 
+    /// Spawns a background writer thread that writes log records to the given writer.
     #[test]
     fn writer_thread_writes_all_records_in_order() {
         let buf = SharedBuf::default();
@@ -158,6 +169,7 @@ mod tests {
         assert_eq!(out, expected);
     }
 
+    /// Ensures that the background writer thread runs on a separate named thread.
     #[test]
     fn writer_runs_on_separate_named_thread() {
         struct ThreadName(Arc<Mutex<Option<String>>>);
@@ -178,6 +190,7 @@ mod tests {
         assert_eq!(seen.lock().unwrap().as_deref(), Some("log-writer"));
     }
 
+    /// Ensures that writing to the channel fails when the background thread is gone.
     #[test]
     fn write_fails_when_thread_is_gone() {
         let (tx, rx) = mpsc::sync_channel(1);
@@ -187,6 +200,7 @@ mod tests {
         assert_eq!(err.kind(), io::ErrorKind::BrokenPipe);
     }
 
+    /// Ensures that log records are flushed to the file even if the background writer thread is not explicitly shut down.
     #[test]
     fn records_are_flushed_to_file_without_shutdown() {
         let dir = std::env::temp_dir().join(format!("https_server_log_{}", std::process::id()));
@@ -208,6 +222,7 @@ mod tests {
         assert_eq!(content, "hello\n");
     }
 
+    /// Ensures that opening the log file appends to it rather than overwriting it.
     #[test]
     fn open_log_file_appends() {
         let dir = std::env::temp_dir().join(format!("https_server_append_{}", std::process::id()));
@@ -219,6 +234,7 @@ mod tests {
         assert_eq!(content, "one\ntwo\n");
     }
 
+    /// Ensures that HTTP status codes are mapped to the correct log levels.
     #[test]
     fn status_to_level() {
         assert_eq!(level_for(200), Level::Info);
@@ -231,6 +247,7 @@ mod tests {
 
     /// Test logger capturing records. The `log` logger is process-global, so
     /// it's installed once and tests look up their own lines by unique uri.
+    /// Provides a way to inspect captured log records for testing purposes.
     pub(crate) struct Capture(Mutex<Vec<(Level, String, String)>>);
 
     impl log::Log for Capture {
@@ -247,7 +264,9 @@ mod tests {
     }
 
     impl Capture {
-        /// (level, target, message) of every record containing `needle`.
+        /// Finds all log records containing the specified `needle` in their message.
+        ///
+        /// Returns a vector of tuples `(level, target, message)` for each matching record.
         pub(crate) fn find(&self, needle: &str) -> Vec<(Level, String, String)> {
             self.0
                 .lock()

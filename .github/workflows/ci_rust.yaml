@@ -25,7 +25,12 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        toolchain: [stable]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -35,12 +40,13 @@ jobs:
       - name: Prepare dist
         run: |
           mkdir -p dist
-          cp target/release/ops_app dist/
+          cp target/release/ops_app* dist/
+          rm dist/ops_app.*d*
           cp -r html css js dist/
-          (cd dist && sha256sum ops_app > ops_app.sha256)
+          (cd dist && sha256sum ops_app* > ops_app.sha256)
       - uses: actions/upload-artifact@v4
         with:
-          name: ops_app-${{ github.sha }} 
+          name: ops_app-${{ matrix.os }}-${{ github.sha }} 
           path: dist/
           if-no-files-found: error
   # ---------- Проверка форматирования ----------

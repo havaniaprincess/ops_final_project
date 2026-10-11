@@ -9,6 +9,8 @@ use axum::{
     response::{IntoResponse, Response},
 };
 
+/// Builds a full path to a static file based on its kind, page, name, and extension.
+/// Returns `None` if the path contains any components that are not normal (e.g., `..`).
 fn build_path(kind: &str, page: &str, name: &str, ext: &str) -> Option<PathBuf> {
     let rel = PathBuf::from(page).join(name);
     if rel.components().any(|c| !matches!(c, Component::Normal(_))) {
@@ -21,6 +23,10 @@ fn build_path(kind: &str, page: &str, name: &str, ext: &str) -> Option<PathBuf> 
     Some(full)
 }
 
+/// Serves a static file at the given path with the specified MIME type.
+/// Returns a `BAD_REQUEST` response if the path is `None`.
+/// Returns a `NOT_FOUND` response if the file does not exist.
+/// Returns an `INTERNAL_SERVER_ERROR` response if reading the file fails.
 async fn serve_file(path: Option<PathBuf>, mime: &'static str) -> Response {
     let Some(path) = path else {
         return StatusCode::BAD_REQUEST.into_response();
@@ -35,13 +41,21 @@ async fn serve_file(path: Option<PathBuf>, mime: &'static str) -> Response {
     }
 }
 
-// GET /
+/// GET /
+/// Serves the main HTML page (index.html) with the appropriate MIME type.
+/// Returns a `BAD_REQUEST` response if the path is invalid.
+/// Returns a `NOT_FOUND` response if the file does not exist.
+/// Returns an `INTERNAL_SERVER_ERROR` response if reading the file fails.
 pub async fn html_handler_main() -> Response {
     let path = PathBuf::from("html").join("index.html");
     serve_file(Some(path), "text/html; charset=utf-8").await
 }
 
-// GET /html/{page}/{*html_name}
+/// GET /html/{page}/{*html_name}
+/// Serves an HTML file with the appropriate MIME type.
+/// Returns a `BAD_REQUEST` response if the path is invalid.
+/// Returns a `NOT_FOUND` response if the file does not exist.
+/// Returns an `INTERNAL_SERVER_ERROR` response if reading the file fails.
 pub async fn html_handler(Path((page, html_name)): Path<(String, String)>) -> Response {
     serve_file(
         build_path("html", &page, &html_name, "html"),
@@ -50,7 +64,11 @@ pub async fn html_handler(Path((page, html_name)): Path<(String, String)>) -> Re
     .await
 }
 
-// GET /css/{page}/{*css_name}
+/// GET /css/{page}/{*css_name}
+/// Serves a CSS file with the appropriate MIME type.
+/// Returns a `BAD_REQUEST` response if the path is invalid.
+/// Returns a `NOT_FOUND` response if the file does not exist.
+/// Returns an `INTERNAL_SERVER_ERROR` response if reading the file fails.
 pub async fn css_handler(Path((page, css_name)): Path<(String, String)>) -> Response {
     serve_file(
         build_path("css", &page, &css_name, "css"),
@@ -59,7 +77,11 @@ pub async fn css_handler(Path((page, css_name)): Path<(String, String)>) -> Resp
     .await
 }
 
-// GET /js/{page}/{*js_name}
+/// GET /js/{page}/{*js_name}
+/// Serves a JavaScript file with the appropriate MIME type.
+/// Returns a `BAD_REQUEST` response if the path is invalid.
+/// Returns a `NOT_FOUND` response if the file does not exist.
+/// Returns an `INTERNAL_SERVER_ERROR` response if reading the file fails.
 pub async fn js_handler(Path((page, js_name)): Path<(String, String)>) -> Response {
     serve_file(
         build_path("js", &page, &js_name, "js"),
@@ -67,7 +89,7 @@ pub async fn js_handler(Path((page, js_name)): Path<(String, String)>) -> Respon
     )
     .await
 }
-
+/// Determines the MIME type of an image file based on its extension.
 fn image_mime(path: &std::path::Path) -> Option<&'static str> {
     let ext = path.extension()?.to_str()?.to_ascii_lowercase();
     Some(match ext.as_str() {
@@ -83,7 +105,12 @@ fn image_mime(path: &std::path::Path) -> Option<&'static str> {
     })
 }
 
-// GET /img/{page}/{*img_name}
+/// GET /img/{page}/{*img_name}
+/// Serves an image file with the appropriate MIME type.
+/// Returns `BAD_REQUEST` if the path is invalid.
+/// Returns `UNSUPPORTED_MEDIA_TYPE` if the file extension is not recognized as an image.
+/// Returns `NOT_FOUND` if the file does not exist.
+/// Returns `INTERNAL_SERVER_ERROR` if reading the file fails.
 pub async fn img_handler(Path((page, img_name)): Path<(String, String)>) -> Response {
     let rel = PathBuf::from(&page).join(&img_name);
     if rel.components().any(|c| !matches!(c, Component::Normal(_))) {
@@ -112,12 +139,14 @@ pub async fn img_handler(Path((page, img_name)): Path<(String, String)>) -> Resp
     }
 }
 
+/// Converts a temperature from Celsius to Fahrenheit.
 fn temp_converter_celsius_to_fahrenheit(celsius: f64) -> f64 {
     celsius * 9.0 / 5.0 + 32.0
 }
 
-// GET /temp_converter?celsius=<f64>
-// Non-finite input ("NaN", "inf") or a result overflowing to infinity -> 400.
+/// GET /temp_converter?celsius=<f64>
+/// Returns the temperature in Fahrenheit as a string if the input is valid.
+/// Non-finite input ("NaN", "inf") or a result overflowing to infinity -> 400.
 pub async fn temp_converter(
     Query(params): Query<HashMap<String, f64>>,
 ) -> Result<String, StatusCode> {
@@ -129,10 +158,14 @@ pub async fn temp_converter(
     Ok(fahrenheit.to_string())
 }
 
+/// GET /health
+/// Returns `200 OK` if the server is healthy.
 pub async fn health() -> StatusCode {
     StatusCode::OK
 }
 
+/// GET /version
+/// Returns the version information of the server, including the package version, Rust compiler version, and authors.
 pub async fn version() -> String {
     format!(
         "version: {}\nrustc: {}\nauthors: {}\n",
@@ -146,6 +179,7 @@ pub async fn version() -> String {
 mod tests {
     use super::*;
 
+    /// Tests for the `build_path` function.
     #[test]
     fn build_path_adds_default_extension() {
         assert_eq!(
@@ -154,6 +188,7 @@ mod tests {
         );
     }
 
+    /// Tests for the `build_path` function.
     #[test]
     fn build_path_keeps_existing_extension() {
         assert_eq!(
@@ -166,6 +201,7 @@ mod tests {
         );
     }
 
+    /// Tests for the `build_path` function with nested names.
     #[test]
     fn build_path_allows_nested_names() {
         assert_eq!(
@@ -174,6 +210,7 @@ mod tests {
         );
     }
 
+    /// Tests for the `build_path` function to ensure it rejects directory traversal and absolute paths.
     #[test]
     fn build_path_rejects_traversal_and_absolute() {
         assert_eq!(build_path("css", "..", "x", "css"), None);
@@ -187,6 +224,7 @@ mod tests {
         assert_eq!(build_path("css", "main", "/etc/passwd", "css"), None);
     }
 
+    /// Tests for the `image_mime` function with known image types.
     #[test]
     fn image_mime_known_types() {
         let cases = [
@@ -205,6 +243,7 @@ mod tests {
         }
     }
 
+    /// Tests for the `image_mime` function to ensure it is case-insensitive.
     #[test]
     fn image_mime_is_case_insensitive() {
         assert_eq!(image_mime(std::path::Path::new("A.PNG")), Some("image/png"));
@@ -214,6 +253,7 @@ mod tests {
         );
     }
 
+    /// Tests for the `image_mime` function with unknown or missing extensions.
     #[test]
     fn image_mime_unknown_or_missing_extension() {
         assert_eq!(image_mime(std::path::Path::new("a.txt")), None);
@@ -221,10 +261,21 @@ mod tests {
         assert_eq!(image_mime(std::path::Path::new(".png")), None);
     }
 
+    /// Asserts that two floating-point numbers are approximately equal.
+    /// 
+    /// # Arguments
+    ///
+    /// * `actual` - The actual floating-point value.
+    /// * `expected` - The expected floating-point value.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the actual and expected values differ by more than 1e-9.
     fn assert_close(actual: f64, expected: f64) {
         assert!((actual - expected).abs() < 1e-9, "{actual} != {expected}");
     }
 
+    /// Tests for the `temp_converter_celsius_to_fahrenheit` function with various cases.
     #[test]
     fn celsius_to_fahrenheit_formula() {
         let cases = [
@@ -241,6 +292,16 @@ mod tests {
         }
     }
 
+    /// Helper function to call the `temp_converter` handler with an optional Celsius value.
+    ///
+    /// # Arguments
+    ///
+    /// * `celsius` - An optional Celsius value to be converted.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing the converted Fahrenheit value as a `String` if successful,
+    /// or a `StatusCode` indicating the type of error.
     async fn call(celsius: Option<f64>) -> Result<String, StatusCode> {
         let params = celsius
             .map(|v| HashMap::from([("celsius".to_string(), v)]))
@@ -248,6 +309,7 @@ mod tests {
         temp_converter(Query(params)).await
     }
 
+    /// Tests for the `temp_converter` handler with various cases.
     #[tokio::test]
     async fn temp_converter_handler() {
         assert_eq!(call(None).await, Ok("32".into()));
@@ -257,6 +319,7 @@ mod tests {
         assert_close(call(Some(37.0)).await.unwrap().parse().unwrap(), 98.6);
     }
 
+    /// Tests that the `temp_converter` handler rejects non-finite Celsius values.
     #[tokio::test]
     async fn temp_converter_rejects_non_finite() {
         for c in [
@@ -270,11 +333,13 @@ mod tests {
         }
     }
 
+    /// Tests that the `health` handler returns an `OK` status.
     #[tokio::test]
     async fn health_is_ok() {
         assert_eq!(health().await, StatusCode::OK);
     }
 
+    /// Tests that the `version` handler returns a string containing the build information.
     #[tokio::test]
     async fn version_contains_build_info() {
         let v = version().await;

@@ -10,6 +10,7 @@ use crate::handlers::{
 pub mod handlers;
 mod logging;
 
+/// Constructs the application router with all routes and middleware.
 fn app() -> Router {
     Router::new()
         .route("/", get(html_handler_main))
@@ -23,6 +24,7 @@ fn app() -> Router {
         .layer(middleware::from_fn(logging::log_requests))
 }
 
+/// Application main entry point. Initializes logging and starts the HTTP server.
 #[tokio::main]
 async fn main() {
     let log_file = std::env::var_os("LOG_FILE")
@@ -50,6 +52,15 @@ mod tests {
     use http_body_util::BodyExt;
     use tower::ServiceExt;
 
+    /// Sends a GET request to the specified URI and returns the status code, content type, and body.
+    ///
+    /// # Arguments
+    ///
+    /// * `uri` - The URI to send the GET request to.
+    ///
+    /// # Returns
+    ///
+    /// A tuple containing the status code, an optional content type, and the response body as a byte vector.
     async fn get(uri: &str) -> (StatusCode, Option<String>, Vec<u8>) {
         let resp = app()
             .oneshot(Request::get(uri).body(Body::empty()).unwrap())
@@ -70,11 +81,21 @@ mod tests {
         (status, ctype, body)
     }
 
+    /// Sends a GET request to the specified URI and returns the status code and response body as a string.
+    ///
+    /// # Arguments
+    ///
+    /// * `uri` - The URI to send the GET request to.
+    ///
+    /// # Returns
+    ///
+    /// A tuple containing the status code and the response body as a string.
     async fn get_text(uri: &str) -> (StatusCode, String) {
         let (status, _, body) = get(uri).await;
         (status, String::from_utf8(body).unwrap())
     }
 
+    /// Tests for the root endpoint to ensure it serves the index HTML file.
     #[tokio::test]
     async fn root_serves_index_html() {
         let (status, ctype, body) = get("/").await;
@@ -83,6 +104,7 @@ mod tests {
         assert_eq!(body, std::fs::read("html/index.html").unwrap());
     }
 
+    /// Tests for the CSS endpoint to ensure it serves CSS files with the correct MIME type.
     #[tokio::test]
     async fn css_served_with_css_mime() {
         let expected = std::fs::read("css/main/main.css").unwrap();
@@ -94,6 +116,7 @@ mod tests {
         }
     }
 
+    /// Tests for the JavaScript endpoint to ensure it serves JS files with the correct MIME type.
     #[tokio::test]
     async fn js_served_with_js_mime() {
         let expected = std::fs::read("js/main/main.js").unwrap();
@@ -109,6 +132,7 @@ mod tests {
         }
     }
 
+    /// Tests that missing static files return a 404 Not Found status.
     #[tokio::test]
     async fn missing_static_files_return_404() {
         for uri in [
@@ -121,6 +145,7 @@ mod tests {
         }
     }
 
+    /// Tests on path traversal to ensure it is rejected with a 400 Bad Request status.
     #[tokio::test]
     async fn path_traversal_is_rejected() {
         for uri in [
@@ -134,6 +159,7 @@ mod tests {
         }
     }
 
+    /// Tests that images with unsupported extensions return a 415 Unsupported Media Type status.
     #[tokio::test]
     async fn img_with_unsupported_extension_is_415() {
         for uri in ["/img/main/file.txt", "/img/main/noext"] {
@@ -145,12 +171,14 @@ mod tests {
         }
     }
 
+    /// Tests that unknown routes return a 404 Not Found status.
     #[tokio::test]
     async fn unknown_route_is_404() {
         assert_eq!(get("/does/not/exist").await.0, StatusCode::NOT_FOUND);
         assert_eq!(get("/css/only_page").await.0, StatusCode::NOT_FOUND);
     }
 
+    /// Tests that non-GET methods return a 405 Method Not Allowed status.
     #[tokio::test]
     async fn non_get_method_is_405() {
         let resp = app()
@@ -160,12 +188,22 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::METHOD_NOT_ALLOWED);
     }
 
+    /// Sends a GET request to the temperature converter endpoint with the specified Celsius value and returns the Fahrenheit result as a floating-point number.
+    ///
+    /// # Arguments
+    ///
+    /// * `celsius` - The Celsius value as a string to be sent as a query parameter.
+    ///
+    /// # Returns
+    ///
+    /// The Fahrenheit result as a floating-point number.
     async fn fahrenheit(celsius: &str) -> f64 {
         let (status, body) = get_text(&format!("/temp_converter?celsius={celsius}")).await;
         assert_eq!(status, StatusCode::OK, "celsius={celsius}");
         body.parse().unwrap()
     }
 
+    /// Tests for the temperature converter endpoint to ensure it correctly converts Celsius to Fahrenheit.
     #[tokio::test]
     async fn temp_converter_converts_celsius() {
         let cases = [
@@ -183,6 +221,7 @@ mod tests {
         }
     }
 
+    /// Tests that the temperature converter returns an integer result without a fractional part when appropriate.
     #[tokio::test]
     async fn temp_converter_integer_result_has_no_fraction() {
         assert_eq!(
@@ -191,6 +230,7 @@ mod tests {
         );
     }
 
+    /// Tests that the temperature converter defaults to 0 Celsius when no query parameter is provided.
     #[tokio::test]
     async fn temp_converter_defaults_to_zero() {
         assert_eq!(
@@ -204,6 +244,7 @@ mod tests {
         );
     }
 
+    /// Tests that the temperature converter rejects invalid input and returns a 400 Bad Request status.
     #[tokio::test]
     async fn temp_converter_rejects_invalid_input() {
         for uri in [
@@ -219,6 +260,7 @@ mod tests {
         }
     }
 
+    /// Tests that the health endpoint returns a 200 OK status with an empty body.
     #[tokio::test]
     async fn health_returns_200_with_empty_body() {
         let (status, _, body) = get("/health").await;
@@ -226,6 +268,7 @@ mod tests {
         assert!(body.is_empty());
     }
 
+    /// Tests that the version endpoint returns the build information, including the package version, Rust compiler version, and authors.
     #[tokio::test]
     async fn version_returns_build_info() {
         let (status, ctype, body) = get("/version").await;
@@ -239,6 +282,7 @@ mod tests {
         assert_eq!(lines[2], "authors: Dmitriy Yudin a.k.a HavaniaPrincess");
     }
 
+    /// Tests that requests are logged with the appropriate log level based on the response status.
     #[tokio::test]
     async fn requests_are_logged_with_level_by_status() {
         let cap = crate::logging::log_capture();
@@ -263,6 +307,7 @@ mod tests {
         assert!(missing[0].2.contains("\" 404 "), "{}", missing[0].2);
     }
 
+    /// Tests that the request log uses the `X-Real-IP` header to determine the client's IP address.
     #[tokio::test]
     async fn request_log_uses_x_real_ip() {
         let cap = crate::logging::log_capture();
