@@ -50,7 +50,7 @@ git switch python_touch
 | Поле |Значение |
 |---|---|
 | Git repository | https://github.com/havaniaprincess/ops_final_project |
-| Platform | Сервис кроссплатформенный: собирается и тестируется в CI на Linux и Windows (минимальная версия Rust 1.99 проверяется на Linux). Деплой — Linux + Docker. |
+| Platform | Сервис кроссплатформенный: собирается и тестируется в CI на Linux, MacOS и Windows (минимальная версия Rust 1.99 проверяется на Linux). Деплой — Linux + Docker. |
 | Public URL | https://havaniaprincess.space |
 | Process manager | Docker Compose |
 | Log | `./deploy.sh logs` или `./deploy.sh app-logs` |
@@ -114,7 +114,7 @@ cargo run --release
 
 ### Release on GitHub
 
-На GitHub выложен релиз бинарников под Windows и Linux. Их можно запустить "из коробки".
+На GitHub выложен релиз бинарников под MacOS, Windows и Linux. Их можно запустить "из коробки".
 
 ## Запуск тестов
 
