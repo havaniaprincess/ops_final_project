@@ -144,7 +144,7 @@ fn temp_converter_celsius_to_fahrenheit(celsius: f64) -> f64 {
     celsius * 9.0 / 5.0 + 32.0
 }
 
-/// GET /temp_converter?celsius=<f64>
+/// GET /temp_converter?celsius=f64
 /// Returns the temperature in Fahrenheit as a string if the input is valid.
 /// Non-finite input ("NaN", "inf") or a result overflowing to infinity -> 400.
 pub async fn temp_converter(
@@ -262,7 +262,7 @@ mod tests {
     }
 
     /// Asserts that two floating-point numbers are approximately equal.
-    /// 
+    ///
     /// # Arguments
     ///
     /// * `actual` - The actual floating-point value.

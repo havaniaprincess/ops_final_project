@@ -38,6 +38,7 @@ jobs:
       - run: cargo build --release --locked
       # Складываем всё, что нужно для запуска: бинарник + статика + контрольная сумма
       - name: Prepare dist
+        shell: bash
         run: |
           mkdir -p dist
           cp target/release/ops_app* dist/
