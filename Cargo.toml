@@ -1,7 +1,7 @@
 [package]
 name = "https_server"
 authors = ["Dmitriy Yudin a.k.a HavaniaPrincess"]
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 license = "MIT"
 

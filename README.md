@@ -15,11 +15,22 @@ HTTP-сервер написанный на `RUST`, с использовани�
     - `/health` - возвращает статус 200 - Success
     - `/temp_converter?celsius=<f64>` - возвращает переведенные в фарингейты цельсии
     - `/version` - возвращает форматированную строку содержащую версию сервиса, версию компилятора и автора.
+    - `/docs` - возвращает документацию к сервису
 
 Что сервис еще умеет внутри:
 
 - `unit-test-ы` - сервис полностью покрыт 34-мя тестами
 - `logging` - сервис логирует каждый запрос, по какому endpoint-у он пришел, какой ответ получил(статус) и за сколько был выполнен. Запись логов в файл выполняется в отдельном потоке
+
+### Паспорт
+
+| Поле |Значение |
+| Git repository | https://github.com/havaniaprincess/ops_final_project |
+| Platform | Сервис-кроссплатформенный, Деплой на Linux |
+| Public URL | https://havaniaprincess.space |
+| Process manager | Docker Compose |
+| Log | `./deploy.sh logs` или `./deploy.sh app-logs` |
+| Restart | `./deploy.sh restart` |
 
 ## Окружение
 
@@ -48,6 +59,10 @@ cargo build --release // по-умолчанию debug
 ```
 cargo run --release
 ```
+
+### Release on GitHub
+
+На GitHub выложен релиз бинарников под Windows и Linux. Их можно запустить "из коробки".
 
 ## Запуск тестов
 
@@ -126,3 +141,9 @@ docker compose up -d --build nginx app
 ## Рабочая версия сервиса
 
 Работающию версию можно найти по [ссылке](https://havaniaprincess.space)
+
+## Проверка работоспособности
+
+```
+curl {domain}/health
+```

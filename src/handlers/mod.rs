@@ -6,7 +6,7 @@ use std::{
 use axum::{
     extract::{Path, Query},
     http::{StatusCode, header},
-    response::{IntoResponse, Response},
+    response::{IntoResponse, Redirect, Response},
 };
 
 /// Builds a full path to a static file based on its kind, page, name, and extension.
@@ -42,6 +42,7 @@ async fn serve_file(path: Option<PathBuf>, mime: &'static str) -> Response {
 }
 
 /// GET /
+///
 /// Serves the main HTML page (index.html) with the appropriate MIME type.
 /// Returns a `BAD_REQUEST` response if the path is invalid.
 /// Returns a `NOT_FOUND` response if the file does not exist.
@@ -51,7 +52,62 @@ pub async fn html_handler_main() -> Response {
     serve_file(Some(path), "text/html; charset=utf-8").await
 }
 
+/// URL of the crate's rustdoc index. rustdoc names the directory after the
+/// crate, which is known at compile time.
+pub const DOCS_INDEX: &str = concat!("/", env!("CARGO_CRATE_NAME"), "/index.html");
+
+/// GET /docs
+///
+/// Redirects (307) to the crate's documentation index.
+/// rustdoc pages use links relative to their own directory (`fn.app.html`,
+/// `handlers/index.html`), so the page must be opened from its real URL:
+/// served at `/docs` those links would resolve to `/fn.app.html` and 404.
+pub async fn docs_handler() -> Redirect {
+    Redirect::temporary(DOCS_INDEX)
+}
+
+/// MIME type for files in the `doc` directory (rustdoc output).
+/// Images are delegated to [`image_mime`]; unknown types are served as
+/// `application/octet-stream`.
+fn doc_mime(path: &std::path::Path) -> &'static str {
+    let ext = path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.to_ascii_lowercase());
+    match ext.as_deref() {
+        Some("html") => "text/html; charset=utf-8",
+        Some("css") => "text/css; charset=utf-8",
+        Some("js") => "text/javascript; charset=utf-8",
+        Some("json") => "application/json",
+        Some("txt") => "text/plain; charset=utf-8",
+        Some("md") => "text/markdown; charset=utf-8",
+        Some("woff2") => "font/woff2",
+        Some("woff") => "font/woff",
+        Some("ttf") => "font/ttf",
+        _ => image_mime(path).unwrap_or("application/octet-stream"),
+    }
+}
+
+/// GET /{path}
+///
+/// Serves a static file from the `doc` directory with the appropriate MIME type.
+/// Returns a `BAD_REQUEST` response if the path is invalid.
+/// Returns a `NOT_FOUND` response if the file does not exist.
+/// Returns an `INTERNAL_SERVER_ERROR` response if reading the file fails.
+pub async fn path_handler(Path(path): Path<String>) -> Response {
+    // Same guard as the other handlers: "..", absolute paths and drive
+    // prefixes would escape doc/ and expose any file readable by the process.
+    let rel = PathBuf::from(&path);
+    if rel.components().any(|c| !matches!(c, Component::Normal(_))) {
+        return StatusCode::BAD_REQUEST.into_response();
+    }
+    let path = PathBuf::from("doc").join(rel);
+    let mime = doc_mime(&path);
+    serve_file(Some(path), mime).await
+}
+
 /// GET /html/{page}/{*html_name}
+///
 /// Serves an HTML file with the appropriate MIME type.
 /// Returns a `BAD_REQUEST` response if the path is invalid.
 /// Returns a `NOT_FOUND` response if the file does not exist.
@@ -65,6 +121,7 @@ pub async fn html_handler(Path((page, html_name)): Path<(String, String)>) -> Re
 }
 
 /// GET /css/{page}/{*css_name}
+///
 /// Serves a CSS file with the appropriate MIME type.
 /// Returns a `BAD_REQUEST` response if the path is invalid.
 /// Returns a `NOT_FOUND` response if the file does not exist.
@@ -78,6 +135,7 @@ pub async fn css_handler(Path((page, css_name)): Path<(String, String)>) -> Resp
 }
 
 /// GET /js/{page}/{*js_name}
+///
 /// Serves a JavaScript file with the appropriate MIME type.
 /// Returns a `BAD_REQUEST` response if the path is invalid.
 /// Returns a `NOT_FOUND` response if the file does not exist.
@@ -106,6 +164,7 @@ fn image_mime(path: &std::path::Path) -> Option<&'static str> {
 }
 
 /// GET /img/{page}/{*img_name}
+///
 /// Serves an image file with the appropriate MIME type.
 /// Returns `BAD_REQUEST` if the path is invalid.
 /// Returns `UNSUPPORTED_MEDIA_TYPE` if the file extension is not recognized as an image.
@@ -145,6 +204,7 @@ fn temp_converter_celsius_to_fahrenheit(celsius: f64) -> f64 {
 }
 
 /// GET /temp_converter?celsius=f64
+///
 /// Returns the temperature in Fahrenheit as a string if the input is valid.
 /// Non-finite input ("NaN", "inf") or a result overflowing to infinity -> 400.
 pub async fn temp_converter(
@@ -159,12 +219,14 @@ pub async fn temp_converter(
 }
 
 /// GET /health
+///
 /// Returns `200 OK` if the server is healthy.
 pub async fn health() -> StatusCode {
     StatusCode::OK
 }
 
 /// GET /version
+///
 /// Returns the version information of the server, including the package version, Rust compiler version, and authors.
 pub async fn version() -> String {
     format!(
@@ -356,5 +418,52 @@ mod tests {
             v.contains("authors: Dmitriy Yudin a.k.a HavaniaPrincess\n"),
             "{v}"
         );
+    }
+
+    #[tokio::test]
+    async fn path_handler_rejects_escaping_paths() {
+        let mut cases = vec!["../Cargo.toml", "a/../../Cargo.toml", "/etc/passwd", ".."];
+        if cfg!(windows) {
+            cases.extend(["C:/Windows/win.ini", r"..\Cargo.toml"]);
+        }
+        for p in cases {
+            let resp = path_handler(Path(p.to_string())).await;
+            assert_eq!(resp.status(), StatusCode::BAD_REQUEST, "{p}");
+        }
+    }
+
+    #[tokio::test]
+    async fn path_handler_missing_is_404() {
+        let resp = path_handler(Path("__no_such_dir/x.html".to_string())).await;
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn doc_mime_types() {
+        let cases = [
+            ("a.html", "text/html; charset=utf-8"),
+            ("a.css", "text/css; charset=utf-8"),
+            ("a.js", "text/javascript; charset=utf-8"),
+            ("a.json", "application/json"),
+            ("a.txt", "text/plain; charset=utf-8"),
+            ("a.md", "text/markdown; charset=utf-8"),
+            ("a.woff2", "font/woff2"),
+            ("a.woff", "font/woff"),
+            ("a.ttf", "font/ttf"),
+            // images come from image_mime
+            ("a.svg", "image/svg+xml"),
+            ("a.png", "image/png"),
+            ("a.ico", "image/x-icon"),
+            // case-insensitive
+            ("A.HTML", "text/html; charset=utf-8"),
+            ("F.WOFF2", "font/woff2"),
+            // unknown or missing extension
+            ("search.index", "application/octet-stream"),
+            ("noext", "application/octet-stream"),
+            (".lock", "application/octet-stream"),
+        ];
+        for (file, mime) in cases {
+            assert_eq!(doc_mime(std::path::Path::new(file)), mime, "{file}");
+        }
     }
 }

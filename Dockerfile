@@ -12,6 +12,7 @@ RUN mkdir src && echo "fn main() {}" > src/main.rs \
 
 COPY src ./src
 RUN cargo build --release
+RUN cargo doc --workspace --no-deps --all-features --locked
 
 # ---------- runtime ----------
 FROM debian:bookworm-slim
@@ -22,5 +23,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
     && mkdir -p /app/logs && chown appuser /app/logs
 
 COPY --from=builder /app/target/release/${APP_NAME} /usr/local/bin/app
+COPY --from=builder /app/target/doc /app/doc
 USER appuser
 CMD ["app"]

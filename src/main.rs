@@ -3,8 +3,8 @@ use std::path::PathBuf;
 use axum::{Router, middleware, routing::get};
 
 use crate::handlers::{
-    css_handler, health, html_handler, html_handler_main, img_handler, js_handler, temp_converter,
-    version,
+    css_handler, docs_handler, health, html_handler, html_handler_main, img_handler, js_handler,
+    path_handler, temp_converter, version,
 };
 
 pub mod handlers;
@@ -14,6 +14,7 @@ mod logging;
 fn app() -> Router {
     Router::new()
         .route("/", get(html_handler_main))
+        .route("/{*path}", get(path_handler))
         .route("/html/{page}/{*html_name}", get(html_handler))
         .route("/css/{page}/{*css_name}", get(css_handler))
         .route("/js/{page}/{*js_name}", get(js_handler))
@@ -21,6 +22,7 @@ fn app() -> Router {
         .route("/temp_converter", get(temp_converter))
         .route("/health", get(health))
         .route("/version", get(version))
+        .route("/docs", get(docs_handler))
         .layer(middleware::from_fn(logging::log_requests))
 }
 
@@ -329,5 +331,164 @@ mod tests {
             "{}",
             lines[0].2
         );
+    }
+
+    /// Temporary files under `doc/` (the docs dir only exists in the Docker
+    /// image, it's gitignored). Each test uses its own dir; removed on drop.
+    struct DocFixture(std::path::PathBuf);
+
+    impl DocFixture {
+        fn new(name: &str, files: &[(&str, &str)]) -> Self {
+            let dir = std::path::PathBuf::from("doc").join(format!("__test_{name}"));
+            for (file, content) in files {
+                let path = dir.join(file);
+                std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+                std::fs::write(path, content).unwrap();
+            }
+            DocFixture(dir)
+        }
+    }
+
+    impl Drop for DocFixture {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[tokio::test]
+    async fn path_handler_serves_doc_files_with_mime() {
+        let _fx = DocFixture::new(
+            "mime",
+            &[
+                ("page.html", "<h1>doc</h1>"),
+                ("style.css", "body{}"),
+                ("nested/app.js", "let a=1;"),
+                ("search.index", "idx"),
+                ("static.files/favicon.svg", "<svg/>"),
+                ("static.files/font.woff2", "wOF2"),
+                ("static.files/LICENSE.txt", "MIT"),
+            ],
+        );
+        let cases = [
+            (
+                "/__test_mime/page.html",
+                "text/html; charset=utf-8",
+                "<h1>doc</h1>",
+            ),
+            (
+                "/__test_mime/style.css",
+                "text/css; charset=utf-8",
+                "body{}",
+            ),
+            (
+                "/__test_mime/nested/app.js",
+                "text/javascript; charset=utf-8",
+                "let a=1;",
+            ),
+            (
+                "/__test_mime/search.index",
+                "application/octet-stream",
+                "idx",
+            ),
+            (
+                "/__test_mime/static.files/favicon.svg",
+                "image/svg+xml",
+                "<svg/>",
+            ),
+            ("/__test_mime/static.files/font.woff2", "font/woff2", "wOF2"),
+            (
+                "/__test_mime/static.files/LICENSE.txt",
+                "text/plain; charset=utf-8",
+                "MIT",
+            ),
+        ];
+        for (uri, mime, body) in cases {
+            let (status, ctype, got) = get(uri).await;
+            assert_eq!(status, StatusCode::OK, "{uri}");
+            assert_eq!(ctype.as_deref(), Some(mime), "{uri}");
+            assert_eq!(got, body.as_bytes(), "{uri}");
+        }
+    }
+
+    #[tokio::test]
+    async fn path_handler_missing_file_is_404() {
+        assert_eq!(get("/__test_none/nope.html").await.0, StatusCode::NOT_FOUND);
+        assert_eq!(get("/no_such_page").await.0, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn path_handler_rejects_traversal() {
+        // Without the check these would read files outside doc/
+        // (Cargo.toml here; /etc/passwd, .env and so on on the server).
+        for uri in [
+            "/%2E%2E/Cargo.toml",
+            "/..%2FCargo.toml",
+            "/static.files/%2E%2E/%2E%2E/Cargo.toml",
+            "/%2E%2E/src/main.rs",
+        ] {
+            assert_eq!(get(uri).await.0, StatusCode::BAD_REQUEST, "{uri}");
+        }
+    }
+
+    #[tokio::test]
+    async fn path_handler_rejects_absolute_paths() {
+        // "//etc/passwd" captures "/etc/passwd"; joining an absolute path
+        // would replace doc/ entirely.
+        for uri in ["//etc/passwd", "//Cargo.toml"] {
+            let (status, _, _) = get(uri).await;
+            assert_ne!(status, StatusCode::OK, "{uri}");
+        }
+    }
+
+    #[tokio::test]
+    async fn catch_all_does_not_shadow_other_routes() {
+        let (status, ctype, _) = get("/css/main/main.css").await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(ctype.as_deref(), Some("text/css; charset=utf-8"));
+        assert_eq!(get("/health").await.0, StatusCode::OK);
+        assert_eq!(
+            get_text("/temp_converter?celsius=100").await,
+            (StatusCode::OK, "212".into())
+        );
+        let (_, _, body) = get("/").await;
+        assert_eq!(body, std::fs::read("html/index.html").unwrap());
+    }
+
+    #[tokio::test]
+    async fn docs_redirects_to_crate_index() {
+        let resp = app()
+            .oneshot(Request::get("/docs").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::TEMPORARY_REDIRECT);
+        assert_eq!(
+            resp.headers().get(header::LOCATION).unwrap(),
+            "/ops_app/index.html"
+        );
+        assert_eq!(crate::handlers::DOCS_INDEX, "/ops_app/index.html");
+    }
+
+    #[tokio::test]
+    async fn docs_redirect_target_is_served() {
+        let index = std::path::PathBuf::from("doc")
+            .join("ops_app")
+            .join("index.html");
+
+        // Use real docs if they were generated locally, otherwise a fixture.
+        let created = !index.exists();
+        if created {
+            std::fs::create_dir_all(index.parent().unwrap()).unwrap();
+            std::fs::write(&index, "<title>docs fixture</title>").unwrap();
+        }
+        let expected = std::fs::read(&index).unwrap();
+        let (status, ctype, body) = get(crate::handlers::DOCS_INDEX).await;
+        if created {
+            let _ = std::fs::remove_file(&index);
+            let _ = std::fs::remove_dir(index.parent().unwrap());
+        }
+
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(ctype.as_deref(), Some("text/html; charset=utf-8"));
+        assert_eq!(body, expected);
     }
 }
