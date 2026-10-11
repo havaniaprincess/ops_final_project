@@ -1,0 +1,81 @@
+# CI для Python-сервиса документации (папка python/)
+name: CI-python
+
+# Python-сервис живёт в ветке python_touch — проверяем её.
+# Rust-код тоже в списке: образ собирает из него документацию (cargo doc),
+# поэтому сломать сборку может и изменение в src/.
+on:
+  push:
+    branches: [python_touch]
+    paths:
+      - "python/**"
+      - ".github/workflows/ci_python.yaml"
+      - "src/**"
+      - "build.rs"
+      - "Cargo.toml"
+      - "Cargo.lock"
+  # PR в python_touch и из неё (например, в main)
+  pull_request:
+    paths:
+      - "python/**"
+      - ".github/workflows/ci_python.yaml"
+      - "src/**"
+      - "build.rs"
+      - "Cargo.toml"
+      - "Cargo.lock"
+  # Ручной запуск: Actions → CI-python → Run workflow
+  workflow_dispatch:
+
+# Только чтение репозитория
+permissions:
+  contents: read
+
+# Новый коммит в ту же ветку/PR отменяет устаревший запуск
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Все команды выполняются в папке python/
+defaults:
+  run:
+    working-directory: python
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip                                   # кэш скачанных пакетов
+          cache-dependency-path: python/requirements*.txt
+      - run: pip install -r requirements.txt -r requirements_dev.txt
+      # Линтер: ошибки и подозрительные места в коде
+      - run: ruff check .
+      # Форматирование: --check не меняет файлы, а падает, если код не отформатирован
+      - run: ruff format --check .
+      # Тесты (используют свою маленькую документацию, cargo doc не нужен)
+      - run: pytest -v
+
+  # ---------- Сборка и проверка Docker-образа ----------
+  docker:
+    runs-on: ubuntu-latest
+    # Образ собирается из корня репозитория (нужны и src/, и python/)
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -f python/Dockerfile -t rust-docs .
+      # Запускаем контейнер и проверяем, что сервис отвечает и документация внутри есть
+      - name: Smoke test
+        run: |
+          docker run -d --name rust-docs -p 8000:8000 rust-docs
+          curl -fsS --retry 10 --retry-delay 1 --retry-all-errors http://localhost:8000/health
+          curl -fsS -o /dev/null http://localhost:8000/ops_app/index.html
+      # Если проверка упала — показываем логи контейнера
+      - name: Container logs
+        if: failure()
+        run: docker logs rust-docs

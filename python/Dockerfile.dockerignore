@@ -1,0 +1,10 @@
+# Что отправляется в Docker при сборке python/Dockerfile.
+# Контекст — весь репозиторий, поэтому исключаем всё и разрешаем только нужное:
+# иначе в сборку уедут target/ (гигабайты), .git, test_venv и т.п.
+*
+!Cargo.toml
+!Cargo.lock
+!build.rs
+!src
+!python/requirements.txt
+!python/app.py
