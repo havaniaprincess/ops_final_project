@@ -22,6 +22,25 @@ HTTP-сервер написанный на `RUST`, с использовани�
 - `unit-test-ы` - сервис полностью покрыт на 90-95%
 - `logging` - сервис логирует каждый запрос, по какому endpoint-у он пришел, какой ответ получил(статус) и за сколько был выполнен. Запись логов в файл выполняется в отдельном потоке
 
+## Сервис документации на Python
+
+В отдельной ветке [`python_touch`](https://github.com/havaniaprincess/ops_final_project/tree/python_touch) в папке [`python/`](https://github.com/havaniaprincess/ops_final_project/tree/python_touch/python) находится дополнительный сервис на `Python` (`FastAPI` + `uvicorn`), который отдаёт документацию этого Rust-проекта (результат `cargo doc`) как обычный сайт.
+
+- `/` - перенаправляет на главную страницу документации
+- `/health` - проверка работоспособности
+- `/api/...` - несколько endpoint-ов в качестве примеров
+- свой Docker-образ: документация генерируется при сборке и лежит внутри образа
+- свой CI (`.github/workflows/ci_python.yaml`): `ruff`, `pytest`, сборка и проверка Docker-образа, выгрузка артефактов
+- CD нет, сервис запускается вручную
+
+Переключиться на ветку:
+
+```bash
+git switch python_touch
+```
+
+Описание, запуск локально и в Docker - в [`python/README.md`](https://github.com/havaniaprincess/ops_final_project/blob/python_touch/python/README.md) в этой ветке.
+
 ## Схема архитектуры
 
 Путь запроса: клиент → nginx (TLS, редирект 80→443) → app:APP_PORT. Плюс certbot продлевает сертификат каждые 12 часов, nginx перечитывает конфиг каждые 6 часов, логи лежат в volume app_logs, Docker работает в rootless-режиме.
