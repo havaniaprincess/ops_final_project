@@ -45,7 +45,7 @@ jobs:
           [[ "$RUNNER_OS" == "Windows" ]] && bin="ops_app.exe"
           mkdir -p dist
           cp target/release/$bin dist/
-          cp target/doc dist/
+          cp -r target/doc dist/
           cp -r html css js dist/
           (cd dist && sha256sum ops_app* > ops_app.sha256)
       - uses: actions/upload-artifact@v4
