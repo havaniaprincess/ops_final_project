@@ -4,6 +4,7 @@ authors = ["Dmitriy Yudin a.k.a HavaniaPrincess"]
 version = "0.1.1"
 edition = "2024"
 license = "MIT"
+rust-version = "1.99"
 
 [dependencies]
 tokio = { version = "1.53", features = ["macros", "rt-multi-thread", "fs"] }
