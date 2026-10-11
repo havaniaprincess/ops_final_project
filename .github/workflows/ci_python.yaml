@@ -55,8 +55,22 @@ jobs:
       - run: ruff check .
       # Форматирование: --check не меняет файлы, а падает, если код не отформатирован
       - run: ruff format --check .
-      # Тесты (используют свою маленькую документацию, cargo doc не нужен)
-      - run: pytest -v
+      # Тесты (используют свою маленькую документацию, cargo doc не нужен).
+      # Заодно сохраняем отчёты: результаты тестов (JUnit) и покрытие кода (XML + HTML)
+      - run: >-
+          pytest -v
+          --junitxml=reports/junit.xml
+          --cov=app --cov-report=term
+          --cov-report=xml:reports/coverage.xml
+          --cov-report=html:reports/coverage-html
+      # Выгружаем отчёты даже если тесты упали — тогда они нужнее всего.
+      # Путь в upload-artifact считается от корня репозитория, а не от python/
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: python-test-reports
+          path: python/reports/
+          retention-days: 30
 
   # ---------- Сборка и проверка Docker-образа ----------
   docker:
@@ -75,7 +89,22 @@ jobs:
           docker run -d --name rust-docs -p 8000:8000 rust-docs
           curl -fsS --retry 10 --retry-delay 1 --retry-all-errors http://localhost:8000/health
           curl -fsS -o /dev/null http://localhost:8000/ops_app/index.html
-      # Если проверка упала — показываем логи контейнера
+      # Логи контейнера: выводим в лог CI и сохраняем файлом (в т.ч. при падении)
       - name: Container logs
-        if: failure()
-        run: docker logs rust-docs
+        if: always()
+        run: docker logs rust-docs 2>&1 | tee container.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rust-docs-container-log
+          path: container.log
+          retention-days: 30
+      # Готовый образ архивом: скачать и запустить без сборки — docker load < rust-docs-image.tar.gz
+      - name: Save image
+        run: docker save rust-docs | gzip > rust-docs-image.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rust-docs-image
+          path: rust-docs-image.tar.gz
+          if-no-files-found: error
+          retention-days: 30

@@ -52,7 +52,7 @@ python/
 ├── app.py                     # сервис: маршруты, раздача документации, логирование
 ├── test_app.py                # тесты pytest
 ├── requirements.txt           # зависимости сервиса
-├── requirements_dev.txt       # зависимости для тестов и проверок (pytest, httpx2, ruff)
+├── requirements_dev.txt       # зависимости для тестов и проверок (pytest, pytest-cov, httpx2, ruff)
 ├── .env.example               # шаблон настроек (скопировать в .env)
 ├── Dockerfile                 # образ: cargo doc + Python-сервис
 ├── Dockerfile.dockerignore    # что отправляется в Docker при сборке
@@ -189,6 +189,12 @@ ruff check .
 ruff format --check .
 ```
 
+Покрытие кода тестами (в терминале и HTML-отчёт в `reports/coverage-html/index.html`):
+
+```bash
+pytest --cov=app --cov-report=term --cov-report=html:reports/coverage-html
+```
+
 ## Переменные окружения
 
 Задаются в `.env` (шаблон - `.env.example`) или переменными окружения:
@@ -239,8 +245,26 @@ GitHub выполняет проверку при push в ветку `python_tou
 - `test`:
     - `ruff check`: статический анализ кода, поиск ошибок
     - `ruff format --check`: тест форматирования кода
-    - `pytest`: тестирование юнит тестами
-- `docker`: сборка Docker-образа, запуск контейнера и проверка `/health` и главной страницы документации. Если проверка упала - выводятся логи контейнера
+    - `pytest`: тестирование юнит тестами и покрытие кода
+- `docker`: сборка Docker-образа, запуск контейнера и проверка `/health` и главной страницы документации. Логи контейнера выводятся в лог CI
+
+Выгружаемые артефакты (Actions → нужный запуск → блок **Artifacts** внизу страницы):
+
+| Артефакт | Что внутри | Хранится |
+|---|---|---|
+| `python-test-reports` | `junit.xml` - результаты тестов, `coverage.xml` и `coverage-html/` - покрытие кода (открыть `coverage-html/index.html`). Выгружается и при упавших тестах | 30 дней |
+| `rust-docs-container-log` | `container.log` - логи контейнера во время проверки. Выгружается и при падении | 30 дней |
+| `rust-docs-image` | `rust-docs-image.tar.gz` - готовый Docker-образ, только если проверка прошла | 30 дней |
+
+GitHub отдаёт любой артефакт zip-архивом: сначала распакуйте его, внутри будет `rust-docs-image.tar.gz`. Запустить образ без сборки:
+
+```bash
+docker load < rust-docs-image.tar.gz
+```
+
+```bash
+docker run -d --name rust-docs -p 8000:8000 rust-docs
+```
 
 ## Проверка работоспособности
 
