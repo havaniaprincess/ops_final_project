@@ -105,7 +105,7 @@ fn level_for(status: u16) -> Level {
 /// Middleware: one line per request — client ip, method, uri, status, latency.
 /// Logs the request after it has been processed by the next middleware or handler.
 pub async fn log_requests(req: Request, next: Next) -> Response {
-    /// Record the start time of the request to measure latency.
+    // Record the start time of the request to measure latency.
     let start = Instant::now();
     let method = req.method().clone();
     let uri = req.uri().clone();
