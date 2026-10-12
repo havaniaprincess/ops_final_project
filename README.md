@@ -326,8 +326,24 @@ docker compose down
 
 ## Проверка работоспособности
 
+Проверка доступности, возвращающая код 200:
+
 ```
 curl -fsS -o /dev/null -w '%{http_code}\n' https://havaniaprincess.space/health
+```
+
+Проверка версии:
+
+```
+curl https://havaniaprincess.space/version
+```
+
+Возвращает контент вида:
+
+```
+version: 0.1.1
+rustc: rustc 1.99.0 (b940084d7 2026-09-28)
+authors: Dmitriy Yudin a.k.a HavaniaPrincess
 ```
 
 ## Безопасность
