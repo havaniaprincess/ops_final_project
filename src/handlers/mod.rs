@@ -14,6 +14,11 @@ use axum::{
 fn build_path(kind: &str, page: &str, name: &str, ext: &str) -> Option<PathBuf> {
     let rel = PathBuf::from(page).join(name);
     if rel.components().any(|c| !matches!(c, Component::Normal(_))) {
+        log::log!(
+            target: "os",
+            log::Level::Warn,
+            "Path contains any components that are not normal: {}", rel.display(),
+        );
         return None;
     }
     let mut full = PathBuf::from(kind).join(rel);
@@ -31,11 +36,23 @@ async fn serve_file(path: Option<PathBuf>, mime: &'static str) -> Response {
     let Some(path) = path else {
         return StatusCode::BAD_REQUEST.into_response();
     };
+    if path.components().any(|c| !matches!(c, Component::Normal(_))) {
+        log::log!(
+            target: "os",
+            log::Level::Warn,
+            "Path contains any components that are not normal: {}", path.display(),
+        );
+        return StatusCode::BAD_REQUEST.into_response();
+    }
     match tokio::fs::read(&path).await {
         Ok(bytes) => ([(header::CONTENT_TYPE, mime)], bytes).into_response(),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => StatusCode::NOT_FOUND.into_response(),
         Err(e) => {
-            log::error!("failed to read {}: {e}", path.display());
+            log::log!(
+                target: "os",
+                log::Level::Error,
+                "Error reading file: {}: {}", e, path.display(),
+            );
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
     }
@@ -99,6 +116,11 @@ pub async fn path_handler(Path(path): Path<String>) -> Response {
     // prefixes would escape doc/ and expose any file readable by the process.
     let rel = PathBuf::from(&path);
     if rel.components().any(|c| !matches!(c, Component::Normal(_))) {
+        log::log!(
+            target: "os",
+            log::Level::Warn,
+            "Path contains any components that are not normal: {}", rel.display(),
+        );
         return StatusCode::BAD_REQUEST.into_response();
     }
     let path = PathBuf::from("doc").join(rel);
@@ -173,6 +195,11 @@ fn image_mime(path: &std::path::Path) -> Option<&'static str> {
 pub async fn img_handler(Path((page, img_name)): Path<(String, String)>) -> Response {
     let rel = PathBuf::from(&page).join(&img_name);
     if rel.components().any(|c| !matches!(c, Component::Normal(_))) {
+        log::log!(
+            target: "os",
+            log::Level::Warn,
+            "Path contains any components that are not normal: {}", rel.display(),
+        );
         return StatusCode::BAD_REQUEST.into_response();
     }
     let path = PathBuf::from("img").join(rel);
@@ -192,7 +219,11 @@ pub async fn img_handler(Path((page, img_name)): Path<(String, String)>) -> Resp
             .into_response(),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => StatusCode::NOT_FOUND.into_response(),
         Err(e) => {
-            log::error!("failed to read {}: {e}", path.display());
+            log::log!(
+                target: "os",
+                log::Level::Error,
+                "Error reading file: {}: {}", e, path.display(),
+            );
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
     }

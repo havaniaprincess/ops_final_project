@@ -164,6 +164,24 @@ cargo test
 
 Уровень зависит от статуса (2xx/3xx → INFO, 4xx → WARN, 5xx → ERROR), а в Docker логи лежат в /app/logs/server.log в volume app_logs.
 
+### А что, если ...? Что-то случилось с файлом.
+
+Воспроизведем ситуацию при которой доступ к файлу по эндпоинту `/` отсутствует, у пользователя сервиса нет прав. В лог выводится ошибка с описанием:
+
+```
+[2026-10-13T16:52:57.455Z ERROR os] Error reading file: Access is denied. (os error 5): html\index.html
+[2026-10-13T16:52:57.455Z ERROR http] - "GET /" 500 0.726ms
+```
+
+### А что, если ...? Пользователь попытается выйти за рамки корневой директории сайта.
+
+Cервис не даст это сделать и в лог запишет `warning`:
+
+```
+[2026-10-13T16:50:17.426Z WARN  os] Path contains any components that are not normal: main\../../Cargo.toml
+[2026-10-13T16:50:17.426Z WARN  http] - "GET /css/main/../../Cargo.toml" 400 0.074ms
+```
+
 ## CI on GitHub
 
 GitHub при каждом pull request и push выполняет тестирование версии, которое состоит из:
