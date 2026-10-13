@@ -36,7 +36,10 @@ async fn serve_file(path: Option<PathBuf>, mime: &'static str) -> Response {
     let Some(path) = path else {
         return StatusCode::BAD_REQUEST.into_response();
     };
-    if path.components().any(|c| !matches!(c, Component::Normal(_))) {
+    if path
+        .components()
+        .any(|c| !matches!(c, Component::Normal(_)))
+    {
         log::log!(
             target: "os",
             log::Level::Warn,
